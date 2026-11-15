@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import asyncio
 import logging
 from typing import Any
 from uuid import uuid4
@@ -13,7 +14,14 @@ from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.core import (
+    CoreState,
+    EVENT_HOMEASSISTANT_STARTED,
+    HomeAssistant,
+    ServiceCall,
+    callback,
+)
+from homeassistant.helpers.event import async_call_later
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.storage import Store
@@ -32,8 +40,7 @@ _LOGGER = logging.getLogger(__name__)
 _CARD_FILENAME = "marco-vacuum-card.js"
 _CARD_PATH = Path(__file__).parent / "www" / _CARD_FILENAME
 _CARD_URL_PATH = f"/{DOMAIN}/{_CARD_FILENAME}"
-_CARD_URL = f"{_CARD_URL_PATH}?v=0.1.2"
-_FRONTEND_REGISTERED_KEY = f"{DOMAIN}_frontend_registered"
+_CARD_URL = f"{_CARD_URL_PATH}?v=0.1.3"
 
 
 def _map_catalog(vacuum_state) -> list[dict[str, Any]]:
@@ -175,21 +182,79 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up domain-level services once for all configured vacuums."""
     hass.data.setdefault(DOMAIN, {})
 
-    # Register the bundled Lovelace card once per Home Assistant runtime.
-    # The static endpoint is intentionally not removed on config-entry unload:
-    # the frontend resource belongs to the integration, not to one vacuum.
-    if not hass.data.get(_FRONTEND_REGISTERED_KEY):
-        if _CARD_PATH.is_file():
+    # Serve the bundled card. In storage mode we register it as a Lovelace
+    # resource, which makes HA await the module before rendering dashboard cards.
+    if _CARD_PATH.is_file():
+        try:
             await hass.http.async_register_static_paths([
                 StaticPathConfig(_CARD_URL_PATH, str(_CARD_PATH), cache_headers=False)
             ])
-            add_extra_js_url(hass, _CARD_URL)
-            hass.data[_FRONTEND_REGISTERED_KEY] = True
-            _LOGGER.debug("Registered Marco Vacuum Lovelace card at %s", _CARD_URL)
-        else:
-            _LOGGER.warning(
-                "Marco Vacuum Lovelace card file is missing: %s", _CARD_PATH
+        except RuntimeError:
+            # The path may already be registered during an integration reload.
+            _LOGGER.debug("Static card path already registered: %s", _CARD_URL_PATH)
+
+        async def _async_register_lovelace_card() -> bool:
+            """Register/update the card resource once Lovelace is ready."""
+            lovelace = hass.data.get("lovelace")
+            if lovelace is None:
+                return False
+
+            resources = getattr(lovelace, "resources", None)
+            if resources is None or not resources.loaded:
+                return False
+
+            if lovelace.mode != "storage":
+                # YAML dashboards have a read-only resource collection.
+                # Keep the legacy fallback for that explicitly configured mode.
+                add_extra_js_url(hass, _CARD_URL)
+                _LOGGER.warning(
+                    "Marco Vacuum card loaded via extra_module_url because Lovelace "
+                    "is in YAML mode. Storage mode is required for deterministic "
+                    "automatic resource loading."
+                )
+                return True
+
+            existing = next(
+                (
+                    item
+                    for item in resources.async_items()
+                    if item.get("url", "").split("?", 1)[0] == _CARD_URL_PATH
+                ),
+                None,
             )
+            if existing is None:
+                await resources.async_create_item(
+                    {"res_type": "module", "url": _CARD_URL}
+                )
+                _LOGGER.info("Registered Marco Vacuum Lovelace card resource")
+            elif existing.get("url") != _CARD_URL:
+                await resources.async_update_item(
+                    existing["id"],
+                    {"res_type": "module", "url": _CARD_URL},
+                )
+                _LOGGER.info("Updated Marco Vacuum Lovelace card resource")
+            return True
+
+        async def _async_wait_for_lovelace(_event=None) -> None:
+            """Wait briefly for Lovelace storage resources to become available."""
+            for _attempt in range(60):
+                if await _async_register_lovelace_card():
+                    return
+                await asyncio.sleep(1)
+            _LOGGER.warning(
+                "Could not register Marco Vacuum card: Lovelace resources "
+                "were not ready after 60 seconds"
+            )
+
+        if hass.state == CoreState.running:
+            hass.async_create_task(_async_wait_for_lovelace())
+        else:
+            hass.bus.async_listen_once(
+                EVENT_HOMEASSISTANT_STARTED,
+                lambda event: hass.async_create_task(_async_wait_for_lovelace(event)),
+            )
+    else:
+        _LOGGER.warning("Marco Vacuum Lovelace card file is missing: %s", _CARD_PATH)
 
     async def save_group(call: ServiceCall) -> None:
         await _async_save_group(hass, call)
