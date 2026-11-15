@@ -12,6 +12,7 @@ import voluptuous as vol
 
 from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
+from homeassistant.components.lovelace import LOVELACE_DATA
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import (
@@ -21,7 +22,6 @@ from homeassistant.core import (
     ServiceCall,
     callback,
 )
-from homeassistant.helpers.event import async_call_later
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.storage import Store
@@ -40,7 +40,7 @@ _LOGGER = logging.getLogger(__name__)
 _CARD_FILENAME = "marco-vacuum-card.js"
 _CARD_PATH = Path(__file__).parent / "www" / _CARD_FILENAME
 _CARD_URL_PATH = f"/{DOMAIN}/{_CARD_FILENAME}"
-_CARD_URL = f"{_CARD_URL_PATH}?v=0.1.3"
+_CARD_URL = f"{_CARD_URL_PATH}?v=0.1.4"
 
 
 def _map_catalog(vacuum_state) -> list[dict[str, Any]]:
@@ -195,15 +195,15 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
         async def _async_register_lovelace_card() -> bool:
             """Register/update the card resource once Lovelace is ready."""
-            lovelace = hass.data.get("lovelace")
+            lovelace = hass.data.get(LOVELACE_DATA)
             if lovelace is None:
                 return False
 
             resources = getattr(lovelace, "resources", None)
-            if resources is None or not resources.loaded:
+            if resources is None:
                 return False
 
-            if lovelace.mode != "storage":
+            if lovelace.resource_mode != "storage":
                 # YAML dashboards have a read-only resource collection.
                 # Keep the legacy fallback for that explicitly configured mode.
                 add_extra_js_url(hass, _CARD_URL)
@@ -214,6 +214,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 )
                 return True
 
+            # Ensure the storage collection has loaded before inspecting it.
+            await resources.async_get_info()
             existing = next(
                 (
                     item
