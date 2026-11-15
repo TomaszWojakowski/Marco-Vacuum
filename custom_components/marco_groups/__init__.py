@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 from uuid import uuid4
 
@@ -23,8 +22,6 @@ from .const import (
     STORAGE_KEY,
     STORAGE_VERSION,
 )
-
-_LOGGER = logging.getLogger(__name__)
 
 
 def _map_catalog(vacuum_state) -> list[dict[str, Any]]:
@@ -166,10 +163,16 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up domain-level services once for all configured vacuums."""
     hass.data.setdefault(DOMAIN, {})
 
+    async def save_group(call: ServiceCall) -> None:
+        await _async_save_group(hass, call)
+
+    async def delete_group(call: ServiceCall) -> None:
+        await _async_delete_group(hass, call)
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_SAVE_GROUP,
-        lambda call: _async_save_group(hass, call),
+        save_group,
         schema=vol.Schema({
             vol.Required("name"): cv.string,
             vol.Required("map_id"): cv.positive_int,
@@ -181,7 +184,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.services.async_register(
         DOMAIN,
         SERVICE_DELETE_GROUP,
-        lambda call: _async_delete_group(hass, call),
+        delete_group,
         schema=vol.Schema({
             vol.Required("group_id"): cv.string,
             vol.Optional(CONF_VACUUM): cv.entity_id,
