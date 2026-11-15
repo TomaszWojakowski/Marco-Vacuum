@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+import logging
 from typing import Any
 from uuid import uuid4
 
 import voluptuous as vol
+
+from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.http import StaticPathConfig
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, callback
@@ -22,6 +27,13 @@ from .const import (
     STORAGE_KEY,
     STORAGE_VERSION,
 )
+
+_LOGGER = logging.getLogger(__name__)
+_CARD_FILENAME = "marco-vacuum-card.js"
+_CARD_PATH = Path(__file__).parent / "www" / _CARD_FILENAME
+_CARD_URL_PATH = f"/{DOMAIN}/{_CARD_FILENAME}"
+_CARD_URL = f"{_CARD_URL_PATH}?v=0.1.1"
+_FRONTEND_REGISTERED_KEY = f"{DOMAIN}_frontend_registered"
 
 
 def _map_catalog(vacuum_state) -> list[dict[str, Any]]:
@@ -162,6 +174,22 @@ async def _async_delete_group(hass: HomeAssistant, call: ServiceCall) -> None:
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up domain-level services once for all configured vacuums."""
     hass.data.setdefault(DOMAIN, {})
+
+    # Register the bundled Lovelace card once per Home Assistant runtime.
+    # The static endpoint is intentionally not removed on config-entry unload:
+    # the frontend resource belongs to the integration, not to one vacuum.
+    if not hass.data.get(_FRONTEND_REGISTERED_KEY):
+        if _CARD_PATH.is_file():
+            await hass.http.async_register_static_paths([
+                StaticPathConfig(_CARD_URL_PATH, str(_CARD_PATH), cache_headers=False)
+            ])
+            add_extra_js_url(hass, _CARD_URL)
+            hass.data[_FRONTEND_REGISTERED_KEY] = True
+            _LOGGER.debug("Registered Marco Vacuum Lovelace card at %s", _CARD_URL)
+        else:
+            _LOGGER.warning(
+                "Marco Vacuum Lovelace card file is missing: %s", _CARD_PATH
+            )
 
     async def save_group(call: ServiceCall) -> None:
         await _async_save_group(hass, call)
