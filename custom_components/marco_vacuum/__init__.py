@@ -32,7 +32,7 @@ _LOGGER = logging.getLogger(__name__)
 _CARD_FILENAME = "marco-vacuum-card.js"
 _CARD_PATH = Path(__file__).parent / "www" / _CARD_FILENAME
 _CARD_URL_PATH = f"/{DOMAIN}/{_CARD_FILENAME}"
-_CARD_URL = f"{_CARD_URL_PATH}?v=0.1.1"
+_CARD_URL = f"{_CARD_URL_PATH}?v=0.1.2"
 _FRONTEND_REGISTERED_KEY = f"{DOMAIN}_frontend_registered"
 
 
