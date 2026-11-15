@@ -100,32 +100,42 @@ class MarcoVacuumCard extends HTMLElement {
     finally{this._busy=false;this._render();}
   }
 }
-// Home Assistant can replace window.customElements while its frontend starts.
-// Register immediately, then register again in the replacement registry if needed.
-function defineMarcoVacuumCard() {
+// The frontend may replace the native registry with the scoped registry polyfill
+// after extra modules start loading. Wait for that replacement before defining
+// the card, otherwise the definition can be lost in the old registry.
+function registerMarcoVacuumCard() {
   const registry = window.customElements;
   if (!registry.get("marco-vacuum-card")) {
     registry.define("marco-vacuum-card", MarcoVacuumCard);
   }
 
-  void registry.whenDefined("home-assistant").then(() => {
-    const currentRegistry = window.customElements;
-    if (
-      currentRegistry !== registry &&
-      !currentRegistry.get("marco-vacuum-card")
-    ) {
-      currentRegistry.define("marco-vacuum-card", MarcoVacuumCard);
-    }
-  });
+  window.customCards = window.customCards || [];
+  if (!window.customCards.some((card) => card.type === "marco-vacuum-card")) {
+    window.customCards.push({
+      type: "marco-vacuum-card",
+      name: "Marco Vacuum – grupy pomieszczeń",
+      description: "Tworzenie, edycja i usuwanie zapisanych grup pomieszczeń.",
+    });
+  }
 }
 
-defineMarcoVacuumCard();
-
-window.customCards = window.customCards || [];
-if (!window.customCards.some((card) => card.type === "marco-vacuum-card")) {
-  window.customCards.push({
-    type: "marco-vacuum-card",
-    name: "Marco Vacuum – grupy pomieszczeń",
-    description: "Tworzenie, edycja i usuwanie zapisanych grup pomieszczeń.",
-  });
+const initialCustomElementRegistry = window.customElements;
+if (initialCustomElementRegistry.get("home-assistant")) {
+  registerMarcoVacuumCard();
+} else {
+  const registryCheck = window.setInterval(() => {
+    if (
+      window.customElements !== initialCustomElementRegistry ||
+      window.customElements.get("home-assistant")
+    ) {
+      window.clearInterval(registryCheck);
+      registerMarcoVacuumCard();
+    }
+  }, 10);
+  window.setTimeout(() => {
+    window.clearInterval(registryCheck);
+    if (!window.customElements.get("marco-vacuum-card")) {
+      registerMarcoVacuumCard();
+    }
+  }, 15000);
 }
