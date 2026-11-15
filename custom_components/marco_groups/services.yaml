@@ -2,6 +2,13 @@ save_group:
   name: Zapisz grupę pomieszczeń
   description: Tworzy nową grupę albo aktualizuje grupę o podanym identyfikatorze.
   fields:
+    vacuum_entity:
+      name: Odkurzacz
+      description: Wskaż odkurzacz, jeśli skonfigurowano więcej niż jeden.
+      required: false
+      selector:
+        entity:
+          domain: vacuum
     name:
       name: Nazwa
       required: true
@@ -29,6 +36,13 @@ save_group:
 delete_group:
   name: Usuń grupę pomieszczeń
   fields:
+    vacuum_entity:
+      name: Odkurzacz
+      description: Wskaż odkurzacz, jeśli skonfigurowano więcej niż jeden.
+      required: false
+      selector:
+        entity:
+          domain: vacuum
     group_id:
       name: ID grupy
       required: true
