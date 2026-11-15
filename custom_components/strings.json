@@ -1,0 +1,21 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Marco Groups",
+        "description": "Wybierz encję robota Dreame, z której integracja odczyta mapy i pomieszczenia.",
+        "data": {
+          "vacuum_entity": "Robot"
+        }
+      }
+    },
+    "error": {
+      "entity_not_found": "Nie znaleziono wybranej encji.",
+      "not_a_vacuum": "Wybrana encja nie jest encją odkurzacza.",
+      "not_dreame_entity": "Wybrana encja nie udostępnia atrybutu maps. Wybierz encję z integracji Dreame Vacuum."
+    },
+    "abort": {
+      "already_configured": "Ta encja robota jest już skonfigurowana."
+    }
+  }
+}

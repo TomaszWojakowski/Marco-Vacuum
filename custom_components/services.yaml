@@ -1,0 +1,36 @@
+save_group:
+  name: Zapisz grupę pomieszczeń
+  description: Tworzy nową grupę albo aktualizuje grupę o podanym identyfikatorze.
+  fields:
+    name:
+      name: Nazwa
+      required: true
+      selector:
+        text:
+    map_id:
+      name: ID mapy
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    segments:
+      name: ID pomieszczeń
+      description: Lista identyfikatorów segmentów z wybranej mapy.
+      required: true
+      selector:
+        object:
+    group_id:
+      name: ID istniejącej grupy
+      required: false
+      selector:
+        text:
+
+delete_group:
+  name: Usuń grupę pomieszczeń
+  fields:
+    group_id:
+      name: ID grupy
+      required: true
+      selector:
+        text:
