@@ -64,8 +64,134 @@ def _map_catalog(vacuum_state) -> list[dict[str, Any]]:
     return catalog
 
 
+def _get_runtime(hass: HomeAssistant, call: ServiceCall) -> dict[str, Any]:
+    """Resolve the target vacuum runtime for a service call."""
+    runtimes = [
+        runtime
+        for runtime in hass.data.get(DOMAIN, {}).values()
+        if isinstance(runtime, dict) and "vacuum_entity" in runtime
+    ]
+    vacuum_entity = call.data.get(CONF_VACUUM)
+
+    if vacuum_entity:
+        runtime = next(
+            (item for item in runtimes if item["vacuum_entity"] == vacuum_entity),
+            None,
+        )
+        if runtime is None:
+            raise HomeAssistantError(
+                f"Nie znaleziono konfiguracji Marco Groups dla {vacuum_entity}."
+            )
+        return runtime
+
+    if len(runtimes) == 1:
+        return runtimes[0]
+    if not runtimes:
+        raise HomeAssistantError("Nie ma skonfigurowanego żadnego odkurzacza Marco Groups.")
+    raise HomeAssistantError(
+        "Przy wielu odkurzaczach wskaż pole vacuum_entity."
+    )
+
+
+async def _async_save_group(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Create a group, or replace it when group_id is supplied."""
+    runtime = _get_runtime(hass, call)
+    vacuum_entity = runtime["vacuum_entity"]
+    state = hass.states.get(vacuum_entity)
+    catalog = _map_catalog(state)
+    map_id = int(call.data["map_id"])
+    selected_map = next((item for item in catalog if item["map_id"] == map_id), None)
+    if selected_map is None:
+        raise HomeAssistantError(
+            f"Mapa {map_id} nie jest dostępna w atrybutach {vacuum_entity}."
+        )
+
+    requested_ids = [int(value) for value in call.data["segments"]]
+    if not requested_ids or len(requested_ids) != len(set(requested_ids)):
+        raise HomeAssistantError("Wybierz co najmniej jedno różne pomieszczenie.")
+
+    room_by_id = {room["id"]: room for room in selected_map["rooms"]}
+    missing = [segment_id for segment_id in requested_ids if segment_id not in room_by_id]
+    if missing:
+        raise HomeAssistantError(
+            f"Nie znaleziono pomieszczeń {missing} na mapie {selected_map['name']}."
+        )
+
+    group_id = call.data.get("group_id") or str(uuid4())
+    new_group = {
+        "id": group_id,
+        "name": call.data["name"].strip(),
+        "map_id": map_id,
+        "map_name": selected_map["name"],
+        "segments": [
+            {"id": segment_id, "name": room_by_id[segment_id]["name"]}
+            for segment_id in requested_ids
+        ],
+    }
+    if not new_group["name"]:
+        raise HomeAssistantError("Nazwa grupy nie może być pusta.")
+
+    existing_index = next(
+        (i for i, group in enumerate(runtime["groups"]) if group.get("id") == group_id),
+        None,
+    )
+    if existing_index is None:
+        runtime["groups"].append(new_group)
+    else:
+        runtime["groups"][existing_index] = new_group
+
+    await runtime["store"].async_save({"groups": runtime["groups"]})
+    sensor = runtime.get("sensor")
+    if sensor:
+        sensor.async_write_ha_state()
+
+
+async def _async_delete_group(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Delete a saved group."""
+    runtime = _get_runtime(hass, call)
+    group_id = call.data["group_id"]
+    before = len(runtime["groups"])
+    runtime["groups"] = [
+        group for group in runtime["groups"] if group.get("id") != group_id
+    ]
+    if len(runtime["groups"]) == before:
+        raise HomeAssistantError(f"Nie znaleziono grupy {group_id}.")
+    await runtime["store"].async_save({"groups": runtime["groups"]})
+    sensor = runtime.get("sensor")
+    if sensor:
+        sensor.async_write_ha_state()
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Set up domain-level services once for all configured vacuums."""
+    hass.data.setdefault(DOMAIN, {})
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SAVE_GROUP,
+        lambda call: _async_save_group(hass, call),
+        schema=vol.Schema({
+            vol.Required("name"): cv.string,
+            vol.Required("map_id"): cv.positive_int,
+            vol.Required("segments"): vol.All(cv.ensure_list, [cv.positive_int]),
+            vol.Optional("group_id"): cv.string,
+            vol.Optional(CONF_VACUUM): cv.entity_id,
+        }),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_DELETE_GROUP,
+        lambda call: _async_delete_group(hass, call),
+        schema=vol.Schema({
+            vol.Required("group_id"): cv.string,
+            vol.Optional(CONF_VACUUM): cv.entity_id,
+        }),
+    )
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Marco Groups."""
+    """Set up one Marco Groups instance."""
     vacuum_entity = entry.data[CONF_VACUUM]
     store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}_{entry.entry_id}")
     stored = await store.async_load()
@@ -79,88 +205,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
 
-    async def save_group(call: ServiceCall) -> None:
-        """Create a group, or replace it when group_id is supplied."""
-        state = hass.states.get(vacuum_entity)
-        catalog = _map_catalog(state)
-        map_id = int(call.data["map_id"])
-        selected_map = next((item for item in catalog if item["map_id"] == map_id), None)
-        if selected_map is None:
-            raise HomeAssistantError(
-                f"Mapa {map_id} nie jest dostępna w atrybutach {vacuum_entity}."
-            )
-
-        requested_ids = [int(value) for value in call.data["segments"]]
-        if not requested_ids or len(requested_ids) != len(set(requested_ids)):
-            raise HomeAssistantError("Wybierz co najmniej jedno różne pomieszczenie.")
-
-        room_by_id = {room["id"]: room for room in selected_map["rooms"]}
-        missing = [segment_id for segment_id in requested_ids if segment_id not in room_by_id]
-        if missing:
-            raise HomeAssistantError(
-                f"Nie znaleziono pomieszczeń {missing} na mapie {selected_map['name']}."
-            )
-
-        group_id = call.data.get("group_id") or str(uuid4())
-        new_group = {
-            "id": group_id,
-            "name": call.data["name"].strip(),
-            "map_id": map_id,
-            "map_name": selected_map["name"],
-            "segments": [
-                {"id": segment_id, "name": room_by_id[segment_id]["name"]}
-                for segment_id in requested_ids
-            ],
-        }
-        if not new_group["name"]:
-            raise HomeAssistantError("Nazwa grupy nie może być pusta.")
-
-        existing_index = next(
-            (i for i, group in enumerate(runtime["groups"]) if group.get("id") == group_id),
-            None,
-        )
-        if existing_index is None:
-            runtime["groups"].append(new_group)
-        else:
-            runtime["groups"][existing_index] = new_group
-
-        await store.async_save({"groups": runtime["groups"]})
-        sensor = runtime.get("sensor")
-        if sensor:
-            sensor.async_write_ha_state()
-
-    async def delete_group(call: ServiceCall) -> None:
-        """Delete a saved group."""
-        group_id = call.data["group_id"]
-        before = len(runtime["groups"])
-        runtime["groups"] = [
-            group for group in runtime["groups"] if group.get("id") != group_id
-        ]
-        if len(runtime["groups"]) == before:
-            raise HomeAssistantError(f"Nie znaleziono grupy {group_id}.")
-        await store.async_save({"groups": runtime["groups"]})
-        sensor = runtime.get("sensor")
-        if sensor:
-            sensor.async_write_ha_state()
-
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_SAVE_GROUP,
-        save_group,
-        schema=vol.Schema({
-            vol.Required("name"): cv.string,
-            vol.Required("map_id"): cv.positive_int,
-            vol.Required("segments"): vol.All(cv.ensure_list, [cv.positive_int]),
-            vol.Optional("group_id"): cv.string,
-        }),
-    )
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_DELETE_GROUP,
-        delete_group,
-        schema=vol.Schema({vol.Required("group_id"): cv.string}),
-    )
-
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     @callback
@@ -172,18 +216,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     unsubscribe = hass.bus.async_listen("state_changed", vacuum_state_changed)
     entry.async_on_unload(unsubscribe)
-    entry.async_on_unload(
-        lambda: hass.services.async_remove(DOMAIN, SERVICE_SAVE_GROUP)
-    )
-    entry.async_on_unload(
-        lambda: hass.services.async_remove(DOMAIN, SERVICE_DELETE_GROUP)
-    )
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload Marco Groups."""
+    """Unload one Marco Groups instance."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id, None)
+        hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     return unload_ok
