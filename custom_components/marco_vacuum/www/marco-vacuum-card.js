@@ -36,7 +36,7 @@ class MarcoVacuumCard extends HTMLElement {
     if(!this._mapId&&maps.length)this._mapId=String(maps[0].map_id);
     if(this._mapId&&!maps.some(m=>String(m.map_id)===this._mapId)){this._mapId=maps.length?String(maps[0].map_id):"";this._reset();}
     const rooms=this._map()?.rooms||[], selected=new Set([...this._rooms].map(String));
-    this.shadowRoot.innerHTML=\`
+    this.shadowRoot.innerHTML=`
       <style>
         :host{display:block;color:var(--primary-text-color)}ha-card{padding:16px}
         h2{font-size:1.2rem;font-weight:500;margin:0 0 12px}h3{font-size:1rem;font-weight:500;margin:18px 0 8px}
@@ -56,22 +56,22 @@ class MarcoVacuumCard extends HTMLElement {
         .empty{padding:12px;border-radius:8px;background:var(--secondary-background-color)}
       </style>
       <ha-card><h2>Grupy pomieszczeń</h2>
-      \${!this._sensor ? \`<div class="empty">Nie znaleziono danych integracji dla <b>\${this._esc(this._config.vacuum_entity)}</b>. Sprawdź konfigurację integracji Marco Vacuum i dostępność map.</div>\` : \`
-        <div class="muted">Odkurzacz: \${this._esc(this._config.vacuum_entity)}</div>
+      ${!this._sensor ? `<div class="empty">Nie znaleziono danych integracji dla <b>${this._esc(this._config.vacuum_entity)}</b>. Sprawdź konfigurację integracji Marco Vacuum i dostępność map.</div>` : `
+        <div class="muted">Odkurzacz: ${this._esc(this._config.vacuum_entity)}</div>
         <form id="form">
-          <label class="field"><span>Mapa</span><select id="map" \${maps.length?"":"disabled"}>
-            \${maps.map(m=>\`<option value="\${this._esc(m.map_id)}" \${String(m.map_id)===this._mapId?"selected":""}>\${this._esc(m.name)}</option>\`).join("")}
+          <label class="field"><span>Mapa</span><select id="map" ${maps.length?"":"disabled"}>
+            ${maps.map(m=>`<option value="${this._esc(m.map_id)}" ${String(m.map_id)===this._mapId?"selected":""}>${this._esc(m.name)}</option>`).join("")}
           </select></label>
-          <label class="field"><span>Nazwa grupy</span><input id="name" type="text" maxlength="80" required placeholder="np. Parter" value="\${this._esc(this._name)}"></label>
+          <label class="field"><span>Nazwa grupy</span><input id="name" type="text" maxlength="80" required placeholder="np. Parter" value="${this._esc(this._name)}"></label>
           <h3>Pomieszczenia</h3>
-          \${rooms.length?\`<div class="rooms">\${rooms.map(r=>\`<label class="room"><input type="checkbox" data-room="\${this._esc(r.id)}" \${selected.has(String(r.id))?"checked":""}><span>\${this._esc(r.name)}</span></label>\`).join("")}</div>\`:\`<div class="muted">Brak pomieszczeń dla wybranej mapy.</div>\`}
-          <div class="actions"><button class="primary" type="submit" \${this._busy||!rooms.length?"disabled":""}>\${this._editing?"Zapisz zmiany":"Dodaj grupę"}</button>
-          \${this._editing?\`<button class="secondary" type="button" data-action="cancel">Anuluj</button>\`:""}</div>
+          ${rooms.length?`<div class="rooms">${rooms.map(r=>`<label class="room"><input type="checkbox" data-room="${this._esc(r.id)}" ${selected.has(String(r.id))?"checked":""}><span>${this._esc(r.name)}</span></label>`).join("")}</div>`:`<div class="muted">Brak pomieszczeń dla wybranej mapy.</div>`}
+          <div class="actions"><button class="primary" type="submit" ${this._busy||!rooms.length?"disabled":""}>${this._editing?"Zapisz zmiany":"Dodaj grupę"}</button>
+          ${this._editing?`<button class="secondary" type="button" data-action="cancel">Anuluj</button>`:""}</div>
         </form>
-        <h3>Zapisane grupy (\${groups.length})</h3>
-        \${groups.length?groups.map(g=>\`<div class="group"><div><div class="group-name">\${this._esc(g.name)}</div><div class="meta">\${this._esc(g.map_name||"Mapa")} · \${(g.segments||[]).map(r=>this._esc(r.name)).join(", ")}</div></div><div class="group-actions"><button class="secondary" data-action="edit" data-id="\${this._esc(g.id)}">Edytuj</button><button class="danger" data-action="delete" data-id="\${this._esc(g.id)}">Usuń</button></div></div>\`).join(""):\`<div class="muted">Nie zapisano jeszcze żadnej grupy.</div>\`}
-        <div class="status" role="status">\${this._esc(this._status)}</div>
-      \`}</ha-card>\`;
+        <h3>Zapisane grupy (${groups.length})</h3>
+        ${groups.length?groups.map(g=>`<div class="group"><div><div class="group-name">${this._esc(g.name)}</div><div class="meta">${this._esc(g.map_name||"Mapa")} · ${(g.segments||[]).map(r=>this._esc(r.name)).join(", ")}</div></div><div class="group-actions"><button class="secondary" data-action="edit" data-id="${this._esc(g.id)}">Edytuj</button><button class="danger" data-action="delete" data-id="${this._esc(g.id)}">Usuń</button></div></div>`).join(""):`<div class="muted">Nie zapisano jeszcze żadnej grupy.</div>`}
+        <div class="status" role="status">${this._esc(this._status)}</div>
+      `}</ha-card>`;
   }
   _change(e){
     if(e.target.id==="map"){this._mapId=e.target.value;this._rooms.clear();this._render();}
@@ -100,6 +100,32 @@ class MarcoVacuumCard extends HTMLElement {
     finally{this._busy=false;this._render();}
   }
 }
-if(!customElements.get("marco-vacuum-card"))customElements.define("marco-vacuum-card",MarcoVacuumCard);
-window.customCards=window.customCards||[];
-window.customCards.push({type:"marco-vacuum-card",name:"Marco Vacuum – grupy pomieszczeń",description:"Tworzenie, edycja i usuwanie zapisanych grup pomieszczeń."});
+// Home Assistant can replace window.customElements while its frontend starts.
+// Register immediately, then register again in the replacement registry if needed.
+function defineMarcoVacuumCard() {
+  const registry = window.customElements;
+  if (!registry.get("marco-vacuum-card")) {
+    registry.define("marco-vacuum-card", MarcoVacuumCard);
+  }
+
+  void registry.whenDefined("home-assistant").then(() => {
+    const currentRegistry = window.customElements;
+    if (
+      currentRegistry !== registry &&
+      !currentRegistry.get("marco-vacuum-card")
+    ) {
+      currentRegistry.define("marco-vacuum-card", MarcoVacuumCard);
+    }
+  });
+}
+
+defineMarcoVacuumCard();
+
+window.customCards = window.customCards || [];
+if (!window.customCards.some((card) => card.type === "marco-vacuum-card")) {
+  window.customCards.push({
+    type: "marco-vacuum-card",
+    name: "Marco Vacuum – grupy pomieszczeń",
+    description: "Tworzenie, edycja i usuwanie zapisanych grup pomieszczeń.",
+  });
+}
