@@ -4,7 +4,7 @@ class MarcoVacuumCard extends HTMLElement {
     this.attachShadow({mode:"open"});
     this._config = null; this._hass = null; this._sensor = null;
     this._signature = null; this._editing = null; this._mapId = "";
-    this._rooms = new Set(); this._name = ""; this._status = ""; this._busy = false;
+    this._rooms = new Set(); this._name = ""; this._status = ""; this._busy = false; this._saving = false;
     this.shadowRoot.addEventListener("click", e => this._click(e));
     this.shadowRoot.addEventListener("change", e => this._change(e));
     this.shadowRoot.addEventListener("input", e => { if(e.target.id==="name") this._name=e.target.value; });
@@ -19,8 +19,14 @@ class MarcoVacuumCard extends HTMLElement {
     const found=Object.entries(hass.states).find(([,s]) =>
       s.attributes?.vacuum_entity===this._config?.vacuum_entity &&
       Array.isArray(s.attributes?.maps) && Array.isArray(s.attributes?.groups));
-    this._sensor=found ? found[1] : null;
-    const sig=this._sensor ? JSON.stringify([this._sensor.state,this._sensor.attributes.maps,this._sensor.attributes.groups]) : "missing";
+    // Keep the last known-good data if HA briefly omits this entity during
+    // a state refresh. A save must never make the existing group list flash empty.
+    if(!found)return;
+    const nextSensor=found[1];
+    const nextGroups=nextSensor.attributes.groups;
+    if(this._saving && this._groups().length>0 && nextGroups.length===0)return;
+    this._sensor=nextSensor;
+    const sig=JSON.stringify([this._sensor.state,this._sensor.attributes.maps,this._sensor.attributes.groups]);
     if(sig!==this._signature){this._signature=sig;this._render();}
   }
   getCardSize(){return 5;}
@@ -36,6 +42,9 @@ class MarcoVacuumCard extends HTMLElement {
       s.attributes?.vacuum_entity===this._config?.vacuum_entity &&
       Array.isArray(s.attributes?.maps) && Array.isArray(s.attributes?.groups));
     if(!sensor)throw new Error("Nie znaleziono encji z danymi grup Marco Vacuum.");
+    // save_group cannot legitimately remove all groups. If HA still exposes
+    // a transient empty snapshot, retain the last known-good list.
+    if(this._saving && this._groups().length>0 && sensor.attributes.groups.length===0)return;
     this._sensor=sensor;
     this._signature=JSON.stringify([sensor.state,sensor.attributes.maps,sensor.attributes.groups]);
   }
@@ -99,7 +108,7 @@ class MarcoVacuumCard extends HTMLElement {
     if(e.target.id!=="form")return;e.preventDefault();
     const name=this.shadowRoot.querySelector("#name")?.value.trim()||"",map=this._map(),segments=[...this._rooms].map(Number);
     if(!name||!map||!segments.length){this._status=!name?"Wpisz nazwę grupy.":"Wybierz co najmniej jedno pomieszczenie.";this._render();return;}
-    this._busy=true;this._status="Zapisywanie…";this._render();
+    this._busy=true;this._saving=true;this._status="Zapisywanie…";this._render();
     try{
       await this._hass.callService("marco_vacuum","save_group",{vacuum_entity:this._config.vacuum_entity,name,map_id:Number(map.map_id),segments,...(this._editing?{group_id:this._editing}:{})});
       this._reset();
@@ -111,7 +120,7 @@ class MarcoVacuumCard extends HTMLElement {
       }
     }
     catch(err){this._status="Nie udało się zapisać grupy: "+(err.message||err);}
-    finally{this._busy=false;this._render();}
+    finally{this._saving=false;this._busy=false;this._render();}
   }
   async _delete(id){
     this._busy=true;this._status="Usuwanie…";this._render();
