@@ -74,8 +74,9 @@ class MarcoVacuumCard extends HTMLElement {
         .group-name{font-weight:500}.meta{font-size:.85rem;margin-top:3px}.group-actions{margin:0;flex-shrink:0}
         .status{min-height:1.3em;margin-top:10px;color:var(--secondary-text-color);font-size:.9rem}
         .empty{padding:12px;border-radius:8px;background:var(--secondary-background-color)}
+        .test-banner{margin:0 0 12px;padding:8px 10px;border:1px solid var(--warning-color);border-radius:8px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.85rem;font-weight:600}
       </style>
-      <ha-card><h2>Grupy pomieszczeń</h2>
+      <ha-card><div class="test-banner">TEST BRANCH: feature/test</div><h2>Grupy pomieszczeń</h2>
       ${!this._sensor ? `<div class="empty">Nie znaleziono danych integracji dla <b>${this._esc(this._config.vacuum_entity)}</b>. Sprawdź konfigurację integracji Marco Vacuum i dostępność map.</div>` : `
         <div class="muted">Odkurzacz: ${this._esc(this._config.vacuum_entity)}</div>
         <form id="form">
