@@ -1,0 +1,11 @@
+{
+  "domain": "marco_vacuum",
+  "name": "Marco Vacuum",
+  "version": "0.1.6",
+  "documentation": "https://www.home-assistant.io/integrations/",
+  "codeowners": [],
+  "config_flow": true,
+  "after_dependencies": [
+    "dreame_vacuum"
+  ]
+}
