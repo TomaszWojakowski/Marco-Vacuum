@@ -40,7 +40,7 @@ _LOGGER = logging.getLogger(__name__)
 _CARD_FILENAME = "marco-vacuum-card.js"
 _CARD_PATH = Path(__file__).parent / "www" / _CARD_FILENAME
 _CARD_URL_PATH = f"/{DOMAIN}/{_CARD_FILENAME}"
-_CARD_URL = f"{_CARD_URL_PATH}?v=0.1.4"
+_CARD_URL = f"{_CARD_URL_PATH}?v=0.1.5"
 
 
 def _map_catalog(vacuum_state) -> list[dict[str, Any]]:
@@ -251,9 +251,14 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         if hass.state == CoreState.running:
             hass.async_create_task(_async_wait_for_lovelace())
         else:
+            @callback
+            def _schedule_lovelace_registration(_event) -> None:
+                """Schedule registration from the Home Assistant event loop."""
+                hass.async_create_task(_async_wait_for_lovelace())
+
             hass.bus.async_listen_once(
                 EVENT_HOMEASSISTANT_STARTED,
-                lambda event: hass.async_create_task(_async_wait_for_lovelace(event)),
+                _schedule_lovelace_registration,
             )
     else:
         _LOGGER.warning("Marco Vacuum Lovelace card file is missing: %s", _CARD_PATH)
