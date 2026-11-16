@@ -28,6 +28,17 @@ class MarcoVacuumCard extends HTMLElement {
   _esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
   _maps(){return this._sensor?.attributes.maps||[];}
   _groups(){return this._sensor?.attributes.groups||[];}
+  async _refreshSensor(){
+    // Fetch the updated entity state after save_group completes. This avoids
+    // waiting for the parent dashboard to push a new hass object to the card.
+    const states=await this._hass.callWS({type:"get_states"});
+    const sensor=states.find(s=>
+      s.attributes?.vacuum_entity===this._config?.vacuum_entity &&
+      Array.isArray(s.attributes?.maps) && Array.isArray(s.attributes?.groups));
+    if(!sensor)throw new Error("Nie znaleziono encji z danymi grup Marco Vacuum.");
+    this._sensor=sensor;
+    this._signature=JSON.stringify([sensor.state,sensor.attributes.maps,sensor.attributes.groups]);
+  }
   _map(){return this._maps().find(m=>String(m.map_id)===String(this._mapId));}
   _reset(){this._editing=null;this._rooms.clear();this._name="";}
   _render(){
@@ -89,7 +100,16 @@ class MarcoVacuumCard extends HTMLElement {
     const name=this.shadowRoot.querySelector("#name")?.value.trim()||"",map=this._map(),segments=[...this._rooms].map(Number);
     if(!name||!map||!segments.length){this._status=!name?"Wpisz nazwę grupy.":"Wybierz co najmniej jedno pomieszczenie.";this._render();return;}
     this._busy=true;this._status="Zapisywanie…";this._render();
-    try{await this._hass.callService("marco_vacuum","save_group",{vacuum_entity:this._config.vacuum_entity,name,map_id:Number(map.map_id),segments,...(this._editing?{group_id:this._editing}:{})});this._reset();this._status="Grupa została zapisana.";}
+    try{
+      await this._hass.callService("marco_vacuum","save_group",{vacuum_entity:this._config.vacuum_entity,name,map_id:Number(map.map_id),segments,...(this._editing?{group_id:this._editing}:{})});
+      this._reset();
+      try{
+        await this._refreshSensor();
+        this._status="Grupa została zapisana.";
+      }catch(err){
+        this._status="Grupa została zapisana, ale lista nie odświeżyła się: "+(err.message||err);
+      }
+    }
     catch(err){this._status="Nie udało się zapisać grupy: "+(err.message||err);}
     finally{this._busy=false;this._render();}
   }
