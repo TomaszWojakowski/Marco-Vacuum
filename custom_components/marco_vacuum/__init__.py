@@ -40,7 +40,7 @@ _LOGGER = logging.getLogger(__name__)
 _CARD_FILENAME = "marco-vacuum-card.js"
 _CARD_PATH = Path(__file__).parent / "www" / _CARD_FILENAME
 _CARD_URL_PATH = f"/{DOMAIN}/{_CARD_FILENAME}"
-_CARD_URL = f"{_CARD_URL_PATH}?v=0.1.5"
+_CARD_URL = f"{_CARD_URL_PATH}?v=0.1.6"
 
 
 def _map_catalog(vacuum_state) -> list[dict[str, Any]]:
