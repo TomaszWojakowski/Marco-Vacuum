@@ -168,3 +168,28 @@ class MarcoVacuumMaintenanceCard extends HTMLElement {
     }
   }
 }
+
+function registerMarcoVacuumMaintenanceCard() {
+  if (!window.customElements.get("marco-vacuum-maintenance-card")) {
+    window.customElements.define("marco-vacuum-maintenance-card", MarcoVacuumMaintenanceCard);
+  }
+  window.customCards = window.customCards || [];
+  if (!window.customCards.some(card => card.type === "marco-vacuum-maintenance-card")) {
+    window.customCards.push({type: "marco-vacuum-maintenance-card", name: "Marco Vacuum – konserwacja", description: "Zużycie akcesoriów, wyposażenie stacji i historia konserwacji."});
+  }
+}
+const maintenanceRegistry = window.customElements;
+if (maintenanceRegistry.get("home-assistant")) {
+  registerMarcoVacuumMaintenanceCard();
+} else {
+  const maintenanceCheck = window.setInterval(() => {
+    if (window.customElements !== maintenanceRegistry || window.customElements.get("home-assistant")) {
+      window.clearInterval(maintenanceCheck);
+      registerMarcoVacuumMaintenanceCard();
+    }
+  }, 10);
+  window.setTimeout(() => {
+    window.clearInterval(maintenanceCheck);
+    if (!window.customElements.get("marco-vacuum-maintenance-card")) registerMarcoVacuumMaintenanceCard();
+  }, 15000);
+}
