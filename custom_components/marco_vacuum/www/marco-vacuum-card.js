@@ -129,6 +129,145 @@ class MarcoVacuumCard extends HTMLElement {
     finally{this._busy=false;this._render();}
   }
 }
+
+class MarcoVacuumStatusCard extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({mode:"open"});
+    this._config = null; this._hass = null; this._vacuum = null; this._sensor = null;
+    this._busy = false; this._signature = null;
+    this.shadowRoot.addEventListener("click", (event) => this._handleAction(event));
+  }
+  setConfig(config) {
+    if (!config?.vacuum_entity) throw new Error("Podaj vacuum_entity, np. vacuum.marco");
+    this._config = config; this._update();
+  }
+  set hass(hass) {
+    this._hass = hass;
+    this._vacuum = hass.states[this._config?.vacuum_entity] || null;
+    this._sensor = Object.values(hass.states).find((entity) =>
+      entity.attributes?.vacuum_entity === this._config?.vacuum_entity &&
+      Array.isArray(entity.attributes?.groups) && Array.isArray(entity.attributes?.maps)
+    ) || null;
+    const signature = JSON.stringify([this._vacuum?.state,this._vacuum?.attributes,this._sensor?.attributes?.groups,this._busy]);
+    if (signature !== this._signature) { this._signature = signature; this._update(); }
+  }
+  getCardSize() { return 4; }
+  static getStubConfig() { return {vacuum_entity:"vacuum.marco"}; }
+  _esc(v) { return String(v ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+  _a() { return this._vacuum?.attributes || {}; }
+  _ids(value) {
+    const values = Array.isArray(value) ? value : typeof value === "string" ? value.split(/[;,\\s]+/) : [];
+    return values.map(Number).filter(Number.isFinite).sort((a,b)=>a-b);
+  }
+  _status() {
+    const a=this._a(), state=String(this._vacuum?.state||"").toLowerCase();
+    if (!this._vacuum || ["unavailable","unknown"].includes(state)) return ["Niedostępny","muted","mdi:cloud-alert"];
+    if (a.has_error || (a.error && !["no error","none","0"].includes(String(a.error).toLowerCase())) || state==="error") return ["Błąd","error","mdi:alert-circle"];
+    if (a.paused || a.cleaning_paused || a.returning_paused || state==="paused") return ["Wstrzymany","warning","mdi:pause-circle"];
+    if (a.returning || a.returning_to_empty || a.returning_to_wash || state==="returning") return ["Wraca do stacji","info","mdi:home-import-outline"];
+    if (a.washing || a.drying) return ["Obsługa w stacji","info","mdi:robot-vacuum"];
+    if (a.running || a.started || a.segment_cleaning || a.zone_cleaning || a.spot_cleaning || ["cleaning","room_cleaning"].includes(state)) return ["Sprząta","success","mdi:robot-vacuum"];
+    if (a.docked || a.charging || ["docked","charging"].includes(state)) return [a.charging || state==="charging" ? "Ładuje się" : "W stacji","muted","mdi:battery-charging"];
+    return ["Gotowy do pracy","muted","mdi:robot-vacuum"];
+  }
+  _mapId() { const a=this._a(); return a.selected_map_id ?? a.map_id ?? null; }
+  _mapName() {
+    const id=this._mapId(), maps=this._sensor?.attributes?.maps||[];
+    return maps.find(m=>String(m.map_id)===String(id))?.name || this._a().selected_map || "Nieznana mapa";
+  }
+  _group() {
+    const mapId=this._mapId(), active=this._ids(this._a().active_segments);
+    if (mapId==null || !active.length) return null;
+    const matches=(this._sensor?.attributes?.groups||[]).filter(g=>{
+      const ids=this._ids((g.segments||[]).map(s=>s.id));
+      return String(g.map_id)===String(mapId) && ids.length===active.length && ids.every((id,i)=>id===active[i]);
+    });
+    return matches.length===1 ? matches[0] : null;
+  }
+  _room() {
+    const id=Number(this._a().current_segment);
+    if (!Number.isFinite(id)) return null;
+    const rooms=this._a().rooms||{};
+    const room=(rooms[this._mapName()]||[]).find(r=>Number(r.id)===id);
+    if (room?.name) return room.name;
+    const map=(this._sensor?.attributes?.maps||[]).find(m=>String(m.map_id)===String(this._mapId()));
+    return map?.rooms?.find(r=>Number(r.id)===id)?.name || null;
+  }
+  _mode() {
+    const mode=String(this._a().cleaning_mode||"").toLowerCase();
+    return ({"sweeping":"Odkurzanie","mopping":"Mopowanie","sweeping and mopping":"Odkurzanie i mopowanie","mopping after sweeping":"Odkurzanie i mopowanie"})[mode] || this._a().cleaning_mode || "—";
+  }
+  _update() {
+    if (!this.shadowRoot || !this._config) return;
+    if (!this._vacuum) { this.shadowRoot.innerHTML=\`<ha-card><div class="empty">Nie znaleziono encji <b>\${this._esc(this._config.vacuum_entity)}</b>.</div></ha-card>\`; return; }
+    const a=this._a(), [status,tone,icon]=this._status(), group=this._group(), room=this._room();
+    const battery=a.battery ?? a.battery_charge_level, progress=Number(a.cleaning_progress), area=Number(a.cleaned_area), minutes=Number(a.cleaning_time);
+    const paused=Boolean(a.paused || a.cleaning_paused || a.returning_paused || this._vacuum.state==="paused");
+    const running=Boolean(a.running || a.started || a.segment_cleaning || a.zone_cleaning || a.spot_cleaning);
+    const canReturn=!(a.docked || a.charging || a.returning || a.returning_to_empty || a.returning_to_wash);
+    this.shadowRoot.innerHTML=\`
+      <style>
+        :host{display:block;color:var(--primary-text-color)}ha-card{padding:16px}
+        .header,.main,.row,.actions{display:flex;align-items:center;justify-content:space-between;gap:10px}
+        .header{margin-bottom:12px}.brand{display:flex;align-items:center;gap:8px;font-size:1.05rem;font-weight:600}
+        ha-icon{--mdc-icon-size:22px;color:var(--secondary-text-color)}
+        .status{display:flex;align-items:center;gap:5px;padding:5px 9px;border-radius:20px;background:var(--secondary-background-color);font-size:.82rem}
+        .success{color:var(--success-color)}.warning{color:var(--warning-color)}.error{color:var(--error-color)}.info{color:var(--info-color)}
+        .main{margin:5px 0 14px}.place{min-width:0}.place h2{font-size:1.4rem;margin:0 0 4px;font-weight:600}
+        .sub,.muted{color:var(--secondary-text-color)}.sub{font-size:.85rem;line-height:1.4}
+        .robot{width:58px;height:58px;flex:0 0 58px;border-radius:15px;background:var(--secondary-background-color);display:grid;place-items:center}
+        .robot ha-icon{--mdc-icon-size:34px;color:var(--primary-color)}
+        .divider{height:1px;background:var(--divider-color);margin:12px 0}
+        .progress-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px}
+        .progress-value{font-size:1.4rem;font-weight:650;font-variant-numeric:tabular-nums}
+        .track{height:7px;border-radius:8px;overflow:hidden;background:var(--divider-color)}.fill{height:100%;background:var(--success-color)}
+        .stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:13px}
+        .stat{background:var(--secondary-background-color);border-radius:10px;padding:9px;min-width:0}
+        .stat ha-icon{display:block;margin-bottom:5px}.value{font-size:1.05rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+        .label{font-size:.75rem;color:var(--secondary-text-color);margin-top:2px}
+        .row{font-size:.88rem;margin:7px 0}.row .muted{font-size:.84rem}
+        .actions{justify-content:flex-start;flex-wrap:wrap;margin-top:13px}
+        button{border:0;border-radius:9px;padding:9px 12px;font:inherit;font-size:.88rem;cursor:pointer;background:var(--secondary-background-color);color:var(--primary-text-color)}
+        button.primary{background:var(--primary-color);color:var(--text-primary-color,white)}button:disabled{opacity:.45;cursor:default}
+        button ha-icon{vertical-align:middle;margin-right:4px;--mdc-icon-size:18px;color:inherit}
+        .empty{padding:12px;background:var(--secondary-background-color);border-radius:8px}
+        @media(max-width:360px){ha-card{padding:12px}.stats{gap:5px}.stat{padding:7px}.value{font-size:.95rem}}
+      </style>
+      <ha-card>
+        <div class="header"><div class="brand"><ha-icon icon="mdi:robot-vacuum"></ha-icon>Marco</div><div class="status \${tone}"><ha-icon icon="\${icon}"></ha-icon>\${this._esc(status)}</div></div>
+        <div class="main"><div class="place">
+          <h2>\${this._esc(room || group?.name || status)}</h2>
+          <div class="sub">\${this._esc(this._mapName())}\${group ? " · Grupa: "+this._esc(group.name) : status==="Sprząta" ? " · Poza zapisaną grupą" : ""}</div>
+          \${room && group ? \`<div class="sub">Grupa: \${this._esc(group.name)}</div>\` : ""}
+        </div><div class="robot"><ha-icon icon="mdi:robot-vacuum"></ha-icon></div></div>
+        \${running || paused ? \`<div class="divider"></div><div class="progress-head"><span class="muted">Postęp sprzątania</span><span class="progress-value">\${Number.isFinite(progress)&&progress>=0?Math.min(100,progress)+"%":"—"}</span></div><div class="track"><div class="fill" style="width:\${Number.isFinite(progress)?Math.max(0,Math.min(100,progress)):0}%"></div></div>\` : ""}
+        <div class="stats">
+          <div class="stat"><ha-icon icon="mdi:battery"></ha-icon><div class="value">\${Number.isFinite(Number(battery))?Math.round(Number(battery))+"%":"—"}</div><div class="label">Bateria</div></div>
+          <div class="stat"><ha-icon icon="mdi:clock-outline"></ha-icon><div class="value">\${Number.isFinite(minutes)&&minutes>0?minutes+" min":"—"}</div><div class="label">Czas pracy</div></div>
+          <div class="stat"><ha-icon icon="mdi:texture-box"></ha-icon><div class="value">\${Number.isFinite(area)&&area>0?area+" m²":"—"}</div><div class="label">Posprzątano</div></div>
+        </div>
+        <div class="divider"></div>
+        <div class="row"><span class="muted">Tryb sprzątania</span><b>\${this._esc(this._mode())}</b></div>
+        <div class="row"><span class="muted">Moc ssania</span><b>\${this._esc(a.suction_level||a.fan_speed||"—")}</b></div>
+        <div class="row"><span class="muted">Błąd</span><b>\${a.has_error?this._esc(a.error||"Wystąpił błąd"):"Brak"}</b></div>
+        <div class="actions">
+          \${paused?\`<button class="primary" data-action="resume" \${this._busy?"disabled":""}><ha-icon icon="mdi:play"></ha-icon>Wznów</button>\`:running?\`<button class="primary" data-action="pause" \${this._busy?"disabled":""}><ha-icon icon="mdi:pause"></ha-icon>Pauza</button>\`:""}
+          <button data-action="return" \${this._busy||!canReturn?"disabled":""}><ha-icon icon="mdi:home-import-outline"></ha-icon>Wróć do stacji</button>
+        </div>
+      </ha-card>\`;
+  }
+  async _handleAction(event) {
+    const button=event.target.closest("button[data-action]");
+    if (!button || !this._hass || this._busy) return;
+    const service=button.dataset.action==="pause"?"pause":button.dataset.action==="resume"?"start":"return_to_base";
+    this._busy=true; this._update();
+    try { await this._hass.callService("vacuum",service,{entity_id:this._config.vacuum_entity}); }
+    catch(error) { console.error("Marco Status: nie udało się wykonać polecenia",error); }
+    finally { this._busy=false; this._signature=null; this._update(); }
+  }
+}
+
 // The frontend may replace the native registry with the scoped registry polyfill
 // after extra modules start loading. Wait for that replacement before defining
 // the card, otherwise the definition can be lost in the old registry.
@@ -137,6 +276,9 @@ function registerMarcoVacuumCard() {
   if (!registry.get("marco-vacuum-card")) {
     registry.define("marco-vacuum-card", MarcoVacuumCard);
   }
+  if (!registry.get("marco-vacuum-status-card")) {
+    registry.define("marco-vacuum-status-card", MarcoVacuumStatusCard);
+  }
 
   window.customCards = window.customCards || [];
   if (!window.customCards.some((card) => card.type === "marco-vacuum-card")) {
@@ -144,6 +286,13 @@ function registerMarcoVacuumCard() {
       type: "marco-vacuum-card",
       name: "Marco Vacuum – grupy pomieszczeń",
       description: "Tworzenie, edycja i usuwanie zapisanych grup pomieszczeń.",
+    });
+  }
+  if (!window.customCards.some((card) => card.type === "marco-vacuum-status-card")) {
+    window.customCards.push({
+      type: "marco-vacuum-status-card",
+      name: "Marco Vacuum – status",
+      description: "Status, aktywna grupa, postęp i sterowanie odkurzaczem.",
     });
   }
 }
