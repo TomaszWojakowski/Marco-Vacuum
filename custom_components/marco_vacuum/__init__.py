@@ -31,6 +31,7 @@ from .const import (
     DOMAIN,
     PLATFORMS,
     SERVICE_DELETE_GROUP,
+    SERVICE_LOG_MAINTENANCE,
     SERVICE_SAVE_GROUP,
     STORAGE_KEY,
     STORAGE_VERSION,
@@ -162,6 +163,29 @@ async def _async_save_group(hass: HomeAssistant, call: ServiceCall) -> None:
         sensor.async_write_ha_state()
 
 
+async def _async_log_maintenance(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Append a maintenance or replacement record to persistent storage."""
+    from homeassistant.util import dt as dt_util
+
+    runtime = _get_runtime(hass, call)
+    record = {
+        "id": str(uuid4()),
+        "date": dt_util.utcnow().isoformat(),
+        "item": call.data["item"],
+        "action": call.data["action"],
+        "note": call.data.get("note", "").strip(),
+    }
+    runtime["maintenance_history"].insert(0, record)
+    runtime["maintenance_history"] = runtime["maintenance_history"][:200]
+    await runtime["store"].async_save({
+        "groups": runtime["groups"],
+        "maintenance_history": runtime["maintenance_history"],
+    })
+    sensor = runtime.get("sensor")
+    if sensor:
+        sensor.async_write_ha_state()
+
+
 async def _async_delete_group(hass: HomeAssistant, call: ServiceCall) -> None:
     """Delete a saved group."""
     runtime = _get_runtime(hass, call)
@@ -269,6 +293,9 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     async def delete_group(call: ServiceCall) -> None:
         await _async_delete_group(hass, call)
 
+    async def log_maintenance(call: ServiceCall) -> None:
+        await _async_log_maintenance(hass, call)
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_SAVE_GROUP,
@@ -278,6 +305,17 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             vol.Required("map_id"): cv.positive_int,
             vol.Required("segments"): vol.All(cv.ensure_list, [cv.positive_int]),
             vol.Optional("group_id"): cv.string,
+            vol.Optional(CONF_VACUUM): cv.entity_id,
+        }),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_LOG_MAINTENANCE,
+        log_maintenance,
+        schema=vol.Schema({
+            vol.Required("item"): vol.All(cv.string, vol.Length(min=1, max=80)),
+            vol.Required("action"): vol.All(cv.string, vol.Length(min=1, max=80)),
+            vol.Optional("note", default=""): vol.All(cv.string, vol.Length(max=500)),
             vol.Optional(CONF_VACUUM): cv.entity_id,
         }),
     )
@@ -304,6 +342,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "vacuum_entity": vacuum_entity,
         "store": store,
         "groups": groups if isinstance(groups, list) else [],
+        "maintenance_history": stored.get("maintenance_history", []) if isinstance(stored, dict) and isinstance(stored.get("maintenance_history", []), list) else [],
         "sensor": None,
     }
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
