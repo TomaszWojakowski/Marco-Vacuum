@@ -200,13 +200,13 @@ class MarcoVacuumStatusCard extends HTMLElement {
   }
   _update() {
     if (!this.shadowRoot || !this._config) return;
-    if (!this._vacuum) { this.shadowRoot.innerHTML=\`<ha-card><div class="empty">Nie znaleziono encji <b>\${this._esc(this._config.vacuum_entity)}</b>.</div></ha-card>\`; return; }
+    if (!this._vacuum) { this.shadowRoot.innerHTML=`<ha-card><div class="empty">Nie znaleziono encji <b>${this._esc(this._config.vacuum_entity)}</b>.</div></ha-card>`; return; }
     const a=this._a(), [status,tone,icon]=this._status(), group=this._group(), room=this._room();
     const battery=a.battery ?? a.battery_charge_level, progress=Number(a.cleaning_progress), area=Number(a.cleaned_area), minutes=Number(a.cleaning_time);
     const paused=Boolean(a.paused || a.cleaning_paused || a.returning_paused || this._vacuum.state==="paused");
     const running=Boolean(a.running || a.started || a.segment_cleaning || a.zone_cleaning || a.spot_cleaning);
     const canReturn=!(a.docked || a.charging || a.returning || a.returning_to_empty || a.returning_to_wash);
-    this.shadowRoot.innerHTML=\`
+    this.shadowRoot.innerHTML=`
       <style>
         :host{display:block;color:var(--primary-text-color)}ha-card{padding:16px}
         .header,.main,.row,.actions{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -235,27 +235,27 @@ class MarcoVacuumStatusCard extends HTMLElement {
         @media(max-width:360px){ha-card{padding:12px}.stats{gap:5px}.stat{padding:7px}.value{font-size:.95rem}}
       </style>
       <ha-card>
-        <div class="header"><div class="brand"><ha-icon icon="mdi:robot-vacuum"></ha-icon>Marco</div><div class="status \${tone}"><ha-icon icon="\${icon}"></ha-icon>\${this._esc(status)}</div></div>
+        <div class="header"><div class="brand"><ha-icon icon="mdi:robot-vacuum"></ha-icon>Marco</div><div class="status ${tone}"><ha-icon icon="${icon}"></ha-icon>${this._esc(status)}</div></div>
         <div class="main"><div class="place">
-          <h2>\${this._esc(room || group?.name || status)}</h2>
-          <div class="sub">\${this._esc(this._mapName())}\${group ? " · Grupa: "+this._esc(group.name) : status==="Sprząta" ? " · Poza zapisaną grupą" : ""}</div>
-          \${room && group ? \`<div class="sub">Grupa: \${this._esc(group.name)}</div>\` : ""}
+          <h2>${this._esc(room || group?.name || status)}</h2>
+          <div class="sub">${this._esc(this._mapName())}${group ? " · Grupa: "+this._esc(group.name) : status==="Sprząta" ? " · Poza zapisaną grupą" : ""}</div>
+          ${room && group ? `<div class="sub">Grupa: ${this._esc(group.name)}</div>` : ""}
         </div><div class="robot"><ha-icon icon="mdi:robot-vacuum"></ha-icon></div></div>
-        \${running || paused ? \`<div class="divider"></div><div class="progress-head"><span class="muted">Postęp sprzątania</span><span class="progress-value">\${Number.isFinite(progress)&&progress>=0?Math.min(100,progress)+"%":"—"}</span></div><div class="track"><div class="fill" style="width:\${Number.isFinite(progress)?Math.max(0,Math.min(100,progress)):0}%"></div></div>\` : ""}
+        ${running || paused ? `<div class="divider"></div><div class="progress-head"><span class="muted">Postęp sprzątania</span><span class="progress-value">${Number.isFinite(progress)&&progress>=0?Math.min(100,progress)+"%":"—"}</span></div><div class="track"><div class="fill" style="width:${Number.isFinite(progress)?Math.max(0,Math.min(100,progress)):0}%"></div></div>` : ""}
         <div class="stats">
-          <div class="stat"><ha-icon icon="mdi:battery"></ha-icon><div class="value">\${Number.isFinite(Number(battery))?Math.round(Number(battery))+"%":"—"}</div><div class="label">Bateria</div></div>
-          <div class="stat"><ha-icon icon="mdi:clock-outline"></ha-icon><div class="value">\${Number.isFinite(minutes)&&minutes>0?minutes+" min":"—"}</div><div class="label">Czas pracy</div></div>
-          <div class="stat"><ha-icon icon="mdi:texture-box"></ha-icon><div class="value">\${Number.isFinite(area)&&area>0?area+" m²":"—"}</div><div class="label">Posprzątano</div></div>
+          <div class="stat"><ha-icon icon="mdi:battery"></ha-icon><div class="value">${Number.isFinite(Number(battery))?Math.round(Number(battery))+"%":"—"}</div><div class="label">Bateria</div></div>
+          <div class="stat"><ha-icon icon="mdi:clock-outline"></ha-icon><div class="value">${Number.isFinite(minutes)&&minutes>0?minutes+" min":"—"}</div><div class="label">Czas pracy</div></div>
+          <div class="stat"><ha-icon icon="mdi:texture-box"></ha-icon><div class="value">${Number.isFinite(area)&&area>0?area+" m²":"—"}</div><div class="label">Posprzątano</div></div>
         </div>
         <div class="divider"></div>
-        <div class="row"><span class="muted">Tryb sprzątania</span><b>\${this._esc(this._mode())}</b></div>
-        <div class="row"><span class="muted">Moc ssania</span><b>\${this._esc(a.suction_level||a.fan_speed||"—")}</b></div>
-        <div class="row"><span class="muted">Błąd</span><b>\${a.has_error?this._esc(a.error||"Wystąpił błąd"):"Brak"}</b></div>
+        <div class="row"><span class="muted">Tryb sprzątania</span><b>${this._esc(this._mode())}</b></div>
+        <div class="row"><span class="muted">Moc ssania</span><b>${this._esc(a.suction_level||a.fan_speed||"—")}</b></div>
+        <div class="row"><span class="muted">Błąd</span><b>${a.has_error?this._esc(a.error||"Wystąpił błąd"):"Brak"}</b></div>
         <div class="actions">
-          \${paused?\`<button class="primary" data-action="resume" \${this._busy?"disabled":""}><ha-icon icon="mdi:play"></ha-icon>Wznów</button>\`:running?\`<button class="primary" data-action="pause" \${this._busy?"disabled":""}><ha-icon icon="mdi:pause"></ha-icon>Pauza</button>\`:""}
-          <button data-action="return" \${this._busy||!canReturn?"disabled":""}><ha-icon icon="mdi:home-import-outline"></ha-icon>Wróć do stacji</button>
+          ${paused?`<button class="primary" data-action="resume" ${this._busy?"disabled":""}><ha-icon icon="mdi:play"></ha-icon>Wznów</button>`:running?`<button class="primary" data-action="pause" ${this._busy?"disabled":""}><ha-icon icon="mdi:pause"></ha-icon>Pauza</button>`:""}
+          <button data-action="return" ${this._busy||!canReturn?"disabled":""}><ha-icon icon="mdi:home-import-outline"></ha-icon>Wróć do stacji</button>
         </div>
-      </ha-card>\`;
+      </ha-card>`;
   }
   async _handleAction(event) {
     const button=event.target.closest("button[data-action]");
