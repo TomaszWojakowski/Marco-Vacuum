@@ -157,7 +157,7 @@ class MarcoVacuumStatusCard extends HTMLElement {
   _esc(v) { return String(v ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
   _a() { return this._vacuum?.attributes || {}; }
   _ids(value) {
-    const values = Array.isArray(value) ? value : typeof value === "string" ? value.split(/[;,\\s]+/) : [];
+    const values = Array.isArray(value) ? value : typeof value === "string" ? value.split(/[;,\s]+/) : [];
     return values.map(Number).filter(Number.isFinite).sort((a,b)=>a-b);
   }
   _status() {
