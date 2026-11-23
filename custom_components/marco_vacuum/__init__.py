@@ -200,7 +200,7 @@ async def _async_delete_group(hass: HomeAssistant, call: ServiceCall) -> None:
     ]
     if len(runtime["groups"]) == before:
         raise HomeAssistantError(f"Nie znaleziono grupy {group_id}.")
-    await runtime["store"].async_save({"groups": runtime["groups"]})
+    await runtime["store"].async_save({"groups": runtime["groups"], "maintenance_history": runtime.get("maintenance_history", [])})
     sensor = runtime.get("sensor")
     if sensor:
         sensor.async_write_ha_state()
