@@ -48,3 +48,29 @@ delete_group:
       required: true
       selector:
         text:
+
+log_maintenance:
+  name: Zapisz czynność konserwacyjną
+  description: Dodaje wymianę, czyszczenie lub inną czynność do historii robota.
+  fields:
+    vacuum_entity:
+      name: Odkurzacz
+      required: false
+      selector:
+        entity:
+          domain: vacuum
+    item:
+      name: Element
+      required: true
+      selector:
+        text:
+    action:
+      name: Czynność
+      required: true
+      selector:
+        text:
+    note:
+      name: Notatka
+      required: false
+      selector:
+        text:

@@ -166,7 +166,7 @@ class MarcoVacuumStatusCard extends HTMLElement {
     if (a.has_error || (a.error && !["no error","none","0"].includes(String(a.error).toLowerCase())) || state==="error") return ["Błąd","error","mdi:alert-circle"];
     if (a.paused || a.cleaning_paused || a.returning_paused || state==="paused") return ["Wstrzymany","warning","mdi:pause-circle"];
     if (a.returning || a.returning_to_empty || a.returning_to_wash || state==="returning") return ["Wraca do stacji","info","mdi:home-import-outline"];
-    if (a.washing || a.drying || ["washing","drying"].includes(String(a.vacuum_state||"").toLowerCase())) return ["Obsługa w stacji","info","mdi:robot-vacuum"];
+    if (a.washing || a.drying) return ["Obsługa w stacji","info","mdi:robot-vacuum"];
     if (a.running || a.started || a.segment_cleaning || a.zone_cleaning || a.spot_cleaning || ["cleaning","room_cleaning"].includes(state)) return ["Sprząta","success","mdi:robot-vacuum"];
     if (a.docked || a.charging || ["docked","charging"].includes(state)) return [a.charging || state==="charging" ? "Ładuje się" : "W stacji","muted","mdi:battery-charging"];
     return ["Gotowy do pracy","muted","mdi:robot-vacuum"];
@@ -201,12 +201,10 @@ class MarcoVacuumStatusCard extends HTMLElement {
   _update() {
     if (!this.shadowRoot || !this._config) return;
     if (!this._vacuum) { this.shadowRoot.innerHTML=`<ha-card><div class="empty">Nie znaleziono encji <b>${this._esc(this._config.vacuum_entity)}</b>.</div></ha-card>`; return; }
-    const a=this._a(), [status,tone,icon]=this._status();
-    const paused=Boolean(a.paused || a.cleaning_paused || a.returning_paused || this._vacuum.state==="paused");
-    const running=Boolean(a.running || a.started || a.segment_cleaning || a.zone_cleaning || a.spot_cleaning || ["cleaning","room_cleaning"].includes(String(this._vacuum.state||"").toLowerCase()));
-    const activeCleaning=running || paused;
-    const group=activeCleaning?this._group():null, room=activeCleaning?this._room():null;
+    const a=this._a(), [status,tone,icon]=this._status(), group=this._group(), room=this._room();
     const battery=a.battery ?? a.battery_charge_level, progress=Number(a.cleaning_progress), area=Number(a.cleaned_area), minutes=Number(a.cleaning_time);
+    const paused=Boolean(a.paused || a.cleaning_paused || a.returning_paused || this._vacuum.state==="paused");
+    const running=Boolean(a.running || a.started || a.segment_cleaning || a.zone_cleaning || a.spot_cleaning);
     const canReturn=!(a.docked || a.charging || a.returning || a.returning_to_empty || a.returning_to_wash);
     this.shadowRoot.innerHTML=`
       <style>
@@ -239,8 +237,9 @@ class MarcoVacuumStatusCard extends HTMLElement {
       <ha-card>
         <div class="header"><div class="brand"><ha-icon icon="mdi:robot-vacuum"></ha-icon>Marco</div><div class="status ${tone}"><ha-icon icon="${icon}"></ha-icon>${this._esc(status)}</div></div>
         <div class="main"><div class="place">
-          <h2>${this._esc(activeCleaning ? (room || group?.name || status) : status)}</h2>
-          <div class="sub">${this._esc(this._mapName())}${activeCleaning ? (group ? " · Grupa: "+this._esc(group.name) : " · Poza zapisaną grupą") : ""}</div>
+          <h2>${this._esc(room || group?.name || status)}</h2>
+          <div class="sub">${this._esc(this._mapName())}${group ? " · Grupa: "+this._esc(group.name) : status==="Sprząta" ? " · Poza zapisaną grupą" : ""}</div>
+          ${room && group ? `<div class="sub">Grupa: ${this._esc(group.name)}</div>` : ""}
         </div><div class="robot"><ha-icon icon="mdi:robot-vacuum"></ha-icon></div></div>
         ${running || paused ? `<div class="divider"></div><div class="progress-head"><span class="muted">Postęp sprzątania</span><span class="progress-value">${Number.isFinite(progress)&&progress>=0?Math.min(100,progress)+"%":"—"}</span></div><div class="track"><div class="fill" style="width:${Number.isFinite(progress)?Math.max(0,Math.min(100,progress)):0}%"></div></div>` : ""}
         <div class="stats">
