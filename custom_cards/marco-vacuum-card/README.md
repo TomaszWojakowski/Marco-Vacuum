@@ -37,3 +37,16 @@ vacuum_entity: vacuum.marco
 ```
 
 Grupa jest rozpoznawana przez dokładne porównanie ID mapy i zestawu aktywnych segmentów z zapisanymi grupami. Przy braku jednoznacznego dopasowania karta nie przypisuje nazwy grupy.
+
+## Karta konserwacji
+
+Karta konserwacji wyświetla pozostały poziom szczotek, filtra i środka odkamieniającego, dostępne informacje o wyposażeniu stacji oraz historię wymian i konserwacji. Wpisy historii są przechowywane przez integrację w pamięci trwałej Home Assistant.
+
+Dodaj kartę do dashboardu:
+
+```yaml
+type: custom:marco-vacuum-maintenance-card
+vacuum_entity: vacuum.marco
+```
+
+Wpisy historii dodaje się przyciskiem **Dodaj wpis**. Dostępna jest usługa `marco_vacuum.log_maintenance`.

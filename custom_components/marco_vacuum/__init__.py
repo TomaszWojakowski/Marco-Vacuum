@@ -31,6 +31,7 @@ from .const import (
     DOMAIN,
     PLATFORMS,
     SERVICE_DELETE_GROUP,
+    SERVICE_LOG_MAINTENANCE,
     SERVICE_SAVE_GROUP,
     STORAGE_KEY,
     STORAGE_VERSION,
@@ -40,7 +41,11 @@ _LOGGER = logging.getLogger(__name__)
 _CARD_FILENAME = "marco-vacuum-card.js"
 _CARD_PATH = Path(__file__).parent / "www" / _CARD_FILENAME
 _CARD_URL_PATH = f"/{DOMAIN}/{_CARD_FILENAME}"
-_CARD_URL = f"{_CARD_URL_PATH}?v=0.1.7"
+_CARD_URL = f"{_CARD_URL_PATH}?v=0.1.8"
+_MAINTENANCE_FILENAME = "marco-vacuum-maintenance-card.js"
+_MAINTENANCE_PATH = Path(__file__).parent / "www" / _MAINTENANCE_FILENAME
+_MAINTENANCE_URL_PATH = f"/{DOMAIN}/{_MAINTENANCE_FILENAME}"
+_MAINTENANCE_URL = f"{_MAINTENANCE_URL_PATH}?v=0.1.0"
 
 
 def _map_catalog(vacuum_state) -> list[dict[str, Any]]:
@@ -156,7 +161,30 @@ async def _async_save_group(hass: HomeAssistant, call: ServiceCall) -> None:
     else:
         runtime["groups"][existing_index] = new_group
 
-    await runtime["store"].async_save({"groups": runtime["groups"]})
+    await runtime["store"].async_save({"groups": runtime["groups"], "maintenance_history": runtime.get("maintenance_history", [])})
+    sensor = runtime.get("sensor")
+    if sensor:
+        sensor.async_write_ha_state()
+
+
+async def _async_log_maintenance(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Append a maintenance or replacement record to persistent storage."""
+    from homeassistant.util import dt as dt_util
+
+    runtime = _get_runtime(hass, call)
+    record = {
+        "id": str(uuid4()),
+        "date": dt_util.utcnow().isoformat(),
+        "item": call.data["item"],
+        "action": call.data["action"],
+        "note": call.data.get("note", "").strip(),
+    }
+    runtime["maintenance_history"].insert(0, record)
+    runtime["maintenance_history"] = runtime["maintenance_history"][:200]
+    await runtime["store"].async_save({
+        "groups": runtime["groups"],
+        "maintenance_history": runtime["maintenance_history"],
+    })
     sensor = runtime.get("sensor")
     if sensor:
         sensor.async_write_ha_state()
@@ -172,7 +200,7 @@ async def _async_delete_group(hass: HomeAssistant, call: ServiceCall) -> None:
     ]
     if len(runtime["groups"]) == before:
         raise HomeAssistantError(f"Nie znaleziono grupy {group_id}.")
-    await runtime["store"].async_save({"groups": runtime["groups"]})
+    await runtime["store"].async_save({"groups": runtime["groups"], "maintenance_history": runtime.get("maintenance_history", [])})
     sensor = runtime.get("sensor")
     if sensor:
         sensor.async_write_ha_state()
@@ -187,7 +215,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     if _CARD_PATH.is_file():
         try:
             await hass.http.async_register_static_paths([
-                StaticPathConfig(_CARD_URL_PATH, str(_CARD_PATH), cache_headers=False)
+                StaticPathConfig(_CARD_URL_PATH, str(_CARD_PATH), cache_headers=False),
+                StaticPathConfig(_MAINTENANCE_URL_PATH, str(_MAINTENANCE_PATH), cache_headers=False),
             ])
         except RuntimeError:
             # The path may already be registered during an integration reload.
@@ -207,6 +236,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 # YAML dashboards have a read-only resource collection.
                 # Keep the legacy fallback for that explicitly configured mode.
                 add_extra_js_url(hass, _CARD_URL)
+                add_extra_js_url(hass, _MAINTENANCE_URL)
                 _LOGGER.warning(
                     "Marco Vacuum card loaded via extra_module_url because Lovelace "
                     "is in YAML mode. Storage mode is required for deterministic "
@@ -216,25 +246,20 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
             # Ensure the storage collection has loaded before inspecting it.
             await resources.async_get_info()
-            existing = next(
-                (
-                    item
-                    for item in resources.async_items()
-                    if item.get("url", "").split("?", 1)[0] == _CARD_URL_PATH
-                ),
-                None,
-            )
-            if existing is None:
-                await resources.async_create_item(
-                    {"res_type": "module", "url": _CARD_URL}
+            for resource_url, resource_path in (
+                (_CARD_URL, _CARD_URL_PATH),
+                (_MAINTENANCE_URL, _MAINTENANCE_URL_PATH),
+            ):
+                existing = next(
+                    (item for item in resources.async_items() if item.get("url", "").split("?", 1)[0] == resource_path),
+                    None,
                 )
-                _LOGGER.info("Registered Marco Vacuum Lovelace card resource")
-            elif existing.get("url") != _CARD_URL:
-                await resources.async_update_item(
-                    existing["id"],
-                    {"res_type": "module", "url": _CARD_URL},
-                )
-                _LOGGER.info("Updated Marco Vacuum Lovelace card resource")
+                if existing is None:
+                    await resources.async_create_item({"res_type": "module", "url": resource_url})
+                    _LOGGER.info("Registered Marco Vacuum Lovelace resource: %s", resource_path)
+                elif existing.get("url") != resource_url:
+                    await resources.async_update_item(existing["id"], {"res_type": "module", "url": resource_url})
+                    _LOGGER.info("Updated Marco Vacuum Lovelace resource: %s", resource_path)
             return True
 
         async def _async_wait_for_lovelace(_event=None) -> None:
@@ -269,6 +294,9 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     async def delete_group(call: ServiceCall) -> None:
         await _async_delete_group(hass, call)
 
+    async def log_maintenance(call: ServiceCall) -> None:
+        await _async_log_maintenance(hass, call)
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_SAVE_GROUP,
@@ -278,6 +306,17 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             vol.Required("map_id"): cv.positive_int,
             vol.Required("segments"): vol.All(cv.ensure_list, [cv.positive_int]),
             vol.Optional("group_id"): cv.string,
+            vol.Optional(CONF_VACUUM): cv.entity_id,
+        }),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_LOG_MAINTENANCE,
+        log_maintenance,
+        schema=vol.Schema({
+            vol.Required("item"): vol.All(cv.string, vol.Length(min=1, max=80)),
+            vol.Required("action"): vol.All(cv.string, vol.Length(min=1, max=80)),
+            vol.Optional("note", default=""): vol.All(cv.string, vol.Length(max=500)),
             vol.Optional(CONF_VACUUM): cv.entity_id,
         }),
     )
@@ -304,6 +343,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "vacuum_entity": vacuum_entity,
         "store": store,
         "groups": groups if isinstance(groups, list) else [],
+        "maintenance_history": stored.get("maintenance_history", []) if isinstance(stored, dict) and isinstance(stored.get("maintenance_history", []), list) else [],
         "sensor": None,
     }
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
