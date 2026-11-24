@@ -338,6 +338,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}_{entry.entry_id}")
     stored = await store.async_load()
     groups = stored.get("groups", []) if isinstance(stored, dict) else []
+    # Drop the retired maintenance history from persistent storage.
+    if isinstance(stored, dict) and "maintenance_history" in stored:
+        await store.async_save({"groups": groups if isinstance(groups, list) else []})
 
     runtime = {
         "vacuum_entity": vacuum_entity,
