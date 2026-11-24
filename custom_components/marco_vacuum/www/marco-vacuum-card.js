@@ -171,15 +171,6 @@ class MarcoVacuumStatusCard extends HTMLElement {
     if (a.docked || a.charging || ["docked","charging"].includes(state)) return [a.charging || state==="charging" ? "Ładuje się" : "W stacji","muted","mdi:battery-charging"];
     return ["Gotowy do pracy","muted","mdi:robot-vacuum"];
   }
-  _waterWarning() {
-    const a=this._a();
-    const warning=String(a.low_water_warning||"").trim().toLowerCase();
-    const tank=String(a.clean_water_tank_status||"").trim().toLowerCase();
-    if (a.low_water===true || (warning && !["none","no warning","ok",""].includes(warning)) || ["low water","no water","empty"].includes(tank)) {
-      return warning==="no water left" || tank==="no water" || tank==="empty" ? "Brak wody w zbiorniku czystej wody" : "Niski poziom wody w zbiorniku czystej wody";
-    }
-    return "";
-  }
   _mapId() { const a=this._a(); return a.selected_map_id ?? a.map_id ?? null; }
   _mapName() {
     const id=this._mapId(), maps=this._sensor?.attributes?.maps||[];
@@ -215,7 +206,6 @@ class MarcoVacuumStatusCard extends HTMLElement {
     const running=Boolean(a.running || a.started || a.segment_cleaning || a.zone_cleaning || a.spot_cleaning || ["cleaning","room_cleaning"].includes(String(this._vacuum.state||"").toLowerCase()));
     const activeCleaning=running || paused;
     const group=activeCleaning?this._group():null, room=activeCleaning?this._room():null;
-    const waterWarning=this._waterWarning();
     const battery=a.battery ?? a.battery_charge_level, progress=Number(a.cleaning_progress), area=Number(a.cleaned_area), minutes=Number(a.cleaning_time);
     const canReturn=!(a.docked || a.charging || a.returning || a.returning_to_empty || a.returning_to_wash);
     this.shadowRoot.innerHTML=`
@@ -244,16 +234,13 @@ class MarcoVacuumStatusCard extends HTMLElement {
         button.primary{background:var(--primary-color);color:var(--text-primary-color,white)}button:disabled{opacity:.45;cursor:default}
         button ha-icon{vertical-align:middle;margin-right:4px;--mdc-icon-size:18px;color:inherit}
         .empty{padding:12px;background:var(--secondary-background-color);border-radius:8px}
-        .alert{display:flex;align-items:center;gap:9px;padding:11px 12px;margin:10px 0;border-radius:10px;background:var(--warning-color);color:var(--text-primary-color,#fff);font-weight:600}
-        .alert ha-icon{color:inherit;flex:0 0 auto}
         @media(max-width:360px){ha-card{padding:12px}.stats{gap:5px}.stat{padding:7px}.value{font-size:.95rem}}
       </style>
       <ha-card>
         <div class="header"><div class="brand"><ha-icon icon="mdi:robot-vacuum"></ha-icon>Marco</div><div class="status ${tone}"><ha-icon icon="${icon}"></ha-icon>${this._esc(status)}</div></div>
-        ${waterWarning ? `<div class="alert" role="alert"><ha-icon icon="mdi:water-alert"></ha-icon><span>${this._esc(waterWarning)}</span></div>` : ""}
         <div class="main"><div class="place">
           <h2>${this._esc(activeCleaning ? (room || group?.name || status) : status)}</h2>
-          ${activeCleaning ? `<div class="sub">${this._esc(this._mapName())}${group ? " · Grupa: "+this._esc(group.name) : " · Poza zapisaną grupą"}</div>` : ""}
+          <div class="sub">${this._esc(this._mapName())}${activeCleaning ? (group ? " · Grupa: "+this._esc(group.name) : " · Poza zapisaną grupą") : ""}</div>
         </div><div class="robot"><ha-icon icon="mdi:robot-vacuum"></ha-icon></div></div>
         ${running || paused ? `<div class="divider"></div><div class="progress-head"><span class="muted">Postęp sprzątania</span><span class="progress-value">${Number.isFinite(progress)&&progress>=0?Math.min(100,progress)+"%":"—"}</span></div><div class="track"><div class="fill" style="width:${Number.isFinite(progress)?Math.max(0,Math.min(100,progress)):0}%"></div></div>` : ""}
         <div class="stats">
@@ -265,7 +252,6 @@ class MarcoVacuumStatusCard extends HTMLElement {
         <div class="row"><span class="muted">Tryb sprzątania</span><b>${this._esc(this._mode())}</b></div>
         <div class="row"><span class="muted">Moc ssania</span><b>${this._esc(a.suction_level||a.fan_speed||"—")}</b></div>
         <div class="row"><span class="muted">Błąd</span><b>${a.has_error?this._esc(a.error||"Wystąpił błąd"):"Brak"}</b></div>
-        ${waterWarning ? `<div class="row"><span class="muted">Woda</span><b class="warning">${this._esc(waterWarning)}</b></div>` : ""}
         <div class="actions">
           ${paused?`<button class="primary" data-action="resume" ${this._busy?"disabled":""}><ha-icon icon="mdi:play"></ha-icon>Wznów</button>`:running?`<button class="primary" data-action="pause" ${this._busy?"disabled":""}><ha-icon icon="mdi:pause"></ha-icon>Pauza</button>`:""}
           <button data-action="return" ${this._busy||!canReturn?"disabled":""}><ha-icon icon="mdi:home-import-outline"></ha-icon>Wróć do stacji</button>
