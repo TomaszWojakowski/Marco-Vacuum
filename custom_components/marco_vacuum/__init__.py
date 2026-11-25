@@ -51,7 +51,7 @@ _MAINTENANCE_URL = f"{_MAINTENANCE_URL_PATH}?v=0.1.0"
 _SCHEDULES_FILENAME = "marco-vacuum-schedules-card.js"
 _SCHEDULES_PATH = Path(__file__).parent / "www" / _SCHEDULES_FILENAME
 _SCHEDULES_URL_PATH = f"/{DOMAIN}/{_SCHEDULES_FILENAME}"
-_SCHEDULES_URL = f"{_SCHEDULES_URL_PATH}?v=0.2.0"
+_SCHEDULES_URL = f"{_SCHEDULES_URL_PATH}?v=0.2.1"
 
 
 def _map_catalog(vacuum_state) -> list[dict[str, Any]]:
