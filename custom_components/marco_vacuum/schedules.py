@@ -122,7 +122,7 @@ async def _save(hass: HomeAssistant, call: ServiceCall) -> None:
     await runtime["schedule_store"].async_save({"schedules": schedules})
     sensor = runtime.get("sensor")
     if sensor:
-        sensor.async_write_ha_state()
+        await sensor.async_update_ha_state(force_refresh=True)
 
 
 async def _delete(hass: HomeAssistant, call: ServiceCall) -> None:
@@ -134,7 +134,7 @@ async def _delete(hass: HomeAssistant, call: ServiceCall) -> None:
     await runtime["schedule_store"].async_save({"schedules": runtime["schedules"]})
     sensor = runtime.get("sensor")
     if sensor:
-        sensor.async_write_ha_state()
+        await sensor.async_update_ha_state(force_refresh=True)
 
 
 async def _run(hass: HomeAssistant, call: ServiceCall) -> None:
