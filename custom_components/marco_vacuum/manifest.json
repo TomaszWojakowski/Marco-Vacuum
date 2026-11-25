@@ -1,7 +1,7 @@
 {
   "domain": "marco_vacuum",
   "name": "Marco Vacuum",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "documentation": "https://www.home-assistant.io/integrations/",
   "codeowners": [],
   "config_flow": true,
