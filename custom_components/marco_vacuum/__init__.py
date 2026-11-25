@@ -45,7 +45,7 @@ _CARD_URL = f"{_CARD_URL_PATH}?v=0.1.8"
 _MAINTENANCE_FILENAME = "marco-vacuum-maintenance-card.js"
 _MAINTENANCE_PATH = Path(__file__).parent / "www" / _MAINTENANCE_FILENAME
 _MAINTENANCE_URL_PATH = f"/{DOMAIN}/{_MAINTENANCE_FILENAME}"
-_MAINTENANCE_URL = f"{_MAINTENANCE_URL_PATH}?v=0.1.0"
+_MAINTENANCE_URL = f"{_MAINTENANCE_URL_PATH}?v=0.1.0"\n_SCHEDULES_FILENAME = "marco-vacuum-schedules-card.js"\n_SCHEDULES_PATH = Path(__file__).parent / "www" / _SCHEDULES_FILENAME\n_SCHEDULES_URL_PATH = f"/{DOMAIN}/{_SCHEDULES_FILENAME}"\n_SCHEDULES_URL = f"{_SCHEDULES_URL_PATH}?v=0.2.0"
 
 
 def _map_catalog(vacuum_state) -> list[dict[str, Any]]:
@@ -216,7 +216,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         try:
             await hass.http.async_register_static_paths([
                 StaticPathConfig(_CARD_URL_PATH, str(_CARD_PATH), cache_headers=False),
-                StaticPathConfig(_MAINTENANCE_URL_PATH, str(_MAINTENANCE_PATH), cache_headers=False),
+                StaticPathConfig(_MAINTENANCE_URL_PATH, str(_MAINTENANCE_PATH), cache_headers=False),\n                StaticPathConfig(_SCHEDULES_URL_PATH, str(_SCHEDULES_PATH), cache_headers=False),
             ])
         except RuntimeError:
             # The path may already be registered during an integration reload.
@@ -236,7 +236,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 # YAML dashboards have a read-only resource collection.
                 # Keep the legacy fallback for that explicitly configured mode.
                 add_extra_js_url(hass, _CARD_URL)
-                add_extra_js_url(hass, _MAINTENANCE_URL)
+                add_extra_js_url(hass, _MAINTENANCE_URL)\n                add_extra_js_url(hass, _SCHEDULES_URL)
                 _LOGGER.warning(
                     "Marco Vacuum card loaded via extra_module_url because Lovelace "
                     "is in YAML mode. Storage mode is required for deterministic "
@@ -248,7 +248,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             await resources.async_get_info()
             for resource_url, resource_path in (
                 (_CARD_URL, _CARD_URL_PATH),
-                (_MAINTENANCE_URL, _MAINTENANCE_URL_PATH),
+                (_MAINTENANCE_URL, _MAINTENANCE_URL_PATH),\n                (_SCHEDULES_URL, _SCHEDULES_URL_PATH),
             ):
                 existing = next(
                     (item for item in resources.async_items() if item.get("url", "").split("?", 1)[0] == resource_path),
