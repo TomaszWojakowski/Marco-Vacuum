@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import time
+import asyncio
 import logging
 from typing import Any
 from uuid import uuid4
@@ -54,7 +55,6 @@ async def async_run_schedule(hass: HomeAssistant, runtime: dict[str, Any], sched
         # Wait for the integration to report the newly selected map before
         # sending segment IDs, which are map-specific.
         for _ in range(30):
-            await hass.async_block_till_done()
             state = hass.states.get(entity_id)
             if state and str(state.attributes.get("selected_map_id")) == str(map_id):
                 break
@@ -149,7 +149,16 @@ def register_services(hass: HomeAssistant) -> None:
     """Register schedule CRUD and run services once."""
     if hass.services.has_service(DOMAIN, _SERVICE_SAVE):
         return
-    async def save_schedule(call: ServiceCall) -> None:\n        await _save(hass, call)\n\n    async def delete_schedule(call: ServiceCall) -> None:\n        await _delete(hass, call)\n\n    async def run_schedule(call: ServiceCall) -> None:\n        await _run(hass, call)\n\n    hass.services.async_register(DOMAIN, _SERVICE_SAVE, save_schedule, schema=vol.Schema({
+    async def save_schedule(call: ServiceCall) -> None:
+        await _save(hass, call)
+
+    async def delete_schedule(call: ServiceCall) -> None:
+        await _delete(hass, call)
+
+    async def run_schedule(call: ServiceCall) -> None:
+        await _run(hass, call)
+
+    hass.services.async_register(DOMAIN, _SERVICE_SAVE, save_schedule, schema=vol.Schema({
         vol.Required("name"): vol.All(cv.string, vol.Length(min=1, max=80)),
         vol.Required("map_id"): cv.positive_int,
         vol.Required("segments"): vol.All(cv.ensure_list, [cv.positive_int]),
