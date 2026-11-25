@@ -67,8 +67,11 @@ class MarcoVacuumSchedulesCard extends HTMLElement {
         enabled:f.elements.enabled.checked
       };
       this._mapId=e.target.value;
-      if(this._editing)this._editing={...this._editing,map_id:Number(e.target.value),segments:[]};
       this._draft.segments=[];
+      if(this._editing){
+        this._editing={...this._editing,...this._draft,map_id:Number(e.target.value),segments:[]};
+        this._draft=null;
+      }
       this._render();
     }
   }
