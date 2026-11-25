@@ -58,7 +58,7 @@ async def async_run_schedule(hass: HomeAssistant, runtime: dict[str, Any], sched
             state = hass.states.get(entity_id)
             if state and str(state.attributes.get("selected_map_id")) == str(map_id):
                 break
-            await __import__("asyncio").sleep(1)
+            await asyncio.sleep(1)
         else:
             raise HomeAssistantError(f"Robot nie przełączył się na mapę {map_id}.")
 
@@ -149,7 +149,7 @@ def register_services(hass: HomeAssistant) -> None:
     """Register schedule CRUD and run services once."""
     if hass.services.has_service(DOMAIN, _SERVICE_SAVE):
         return
-    hass.services.async_register(DOMAIN, _SERVICE_SAVE, lambda call: _save(hass, call), schema=vol.Schema({
+    async def save_schedule(call: ServiceCall) -> None:\n        await _save(hass, call)\n\n    async def delete_schedule(call: ServiceCall) -> None:\n        await _delete(hass, call)\n\n    async def run_schedule(call: ServiceCall) -> None:\n        await _run(hass, call)\n\n    hass.services.async_register(DOMAIN, _SERVICE_SAVE, save_schedule, schema=vol.Schema({
         vol.Required("name"): vol.All(cv.string, vol.Length(min=1, max=80)),
         vol.Required("map_id"): cv.positive_int,
         vol.Required("segments"): vol.All(cv.ensure_list, [cv.positive_int]),
@@ -162,11 +162,11 @@ def register_services(hass: HomeAssistant) -> None:
         vol.Optional("schedule_id"): cv.string,
         vol.Optional(CONF_VACUUM): cv.entity_id,
     }))
-    hass.services.async_register(DOMAIN, _SERVICE_DELETE, lambda call: _delete(hass, call), schema=vol.Schema({
+    hass.services.async_register(DOMAIN, _SERVICE_DELETE, delete_schedule, schema=vol.Schema({
         vol.Required("schedule_id"): cv.string,
         vol.Optional(CONF_VACUUM): cv.entity_id,
     }))
-    hass.services.async_register(DOMAIN, _SERVICE_RUN, lambda call: _run(hass, call), schema=vol.Schema({
+    hass.services.async_register(DOMAIN, _SERVICE_RUN, run_schedule, schema=vol.Schema({
         vol.Required("schedule_id"): cv.string,
         vol.Optional(CONF_VACUUM): cv.entity_id,
     }))
