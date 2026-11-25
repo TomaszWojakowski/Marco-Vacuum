@@ -1,7 +1,7 @@
 class MarcoVacuumSchedulesCard extends HTMLElement {
   constructor() {
     super(); this.attachShadow({mode:"open"}); this._hass=null; this._config=null;
-    this._sensor=null; this._editing=null; this._busy=false; this._status=""; this._signature=null; this._mapId="";
+    this._sensor=null; this._editing=null; this._draft=null; this._busy=false; this._status=""; this._signature=null; this._mapId="";
     this.shadowRoot.addEventListener("click",e=>this._click(e));
     this.shadowRoot.addEventListener("change",e=>this._change(e));
     this.shadowRoot.addEventListener("submit",e=>this._submit(e));
@@ -20,7 +20,7 @@ class MarcoVacuumSchedulesCard extends HTMLElement {
   _schedules(){return this._a().schedules||[]}
   _render(){
     if(!this._config)return;
-    const maps=this._maps(),list=this._schedules(),g=this._editing||{};
+    const maps=this._maps(),list=this._schedules(),g=this._editing||this._draft||{};
     const mapId=String(g.map_id??this._mapId??maps[0]?.map_id??"");
     const map=maps.find(x=>String(x.map_id)===mapId)||maps[0], selected=new Set((g.segments||[]).map(Number));
     const days=["Pon","Wt","Śr","Czw","Pt","Sob","Niedz"];
@@ -55,11 +55,27 @@ class MarcoVacuumSchedulesCard extends HTMLElement {
       <div class="status" role="status">${this._esc(this._status)}</div>
     </ha-card>`;
   }
-  _change(e){if(e.target.name==="map_id"){this._mapId=e.target.value;if(this._editing)this._editing={...this._editing,map_id:Number(e.target.value),segments:[]};this._render();}}
+  _change(e){
+    if(e.target.name==="map_id"){
+      const f=e.target.form,d=new FormData(f);
+      this._draft={
+        name:String(d.get("name")||""),map_id:Number(e.target.value),
+        segments:[...f.querySelectorAll('input[name="segments"]:checked')].map(x=>Number(x.value)),
+        days:[...f.querySelectorAll('input[name="days"]:checked')].map(x=>Number(x.value)),
+        time:String(d.get("time")||"07:00"),repeats:Number(d.get("repeats")||1),
+        suction_level:Number(d.get("suction_level")||0),water_volume:Number(d.get("water_volume")||1),
+        enabled:f.elements.enabled.checked
+      };
+      this._mapId=e.target.value;
+      if(this._editing)this._editing={...this._editing,map_id:Number(e.target.value),segments:[]};
+      this._draft.segments=[];
+      this._render();
+    }
+  }
   async _click(e){const b=e.target.closest("button[data-action]");if(!b)return;const id=b.dataset.id,action=b.dataset.action;
-    if(action==="cancel"){this._editing=null;this._mapId="";this._render();return;}
+    if(action==="cancel"){this._editing=null;this._draft=null;this._mapId="";this._render();return;}
     const s=this._schedules().find(x=>x.id===id);if(!s)return;
-    if(action==="edit"){this._editing={...s};this._mapId=String(s.map_id);this._render();return;}
+    if(action==="edit"){this._editing={...s};this._draft=null;this._mapId=String(s.map_id);this._render();return;}
     if(action==="delete"&&!window.confirm("Usunąć harmonogram „"+s.name+"”?"))return;
     this._busy=true;this._status=action==="run"?"Uruchamianie…":"Usuwanie…";this._render();
     try{await this._hass.callService("marco_vacuum",action==="run"?"run_schedule":"delete_schedule",{vacuum_entity:this._config.vacuum_entity,schedule_id:id});this._status=action==="run"?"Wysłano polecenie uruchomienia.":"Harmonogram usunięty.";if(action==="delete"&&this._editing?.id===id)this._editing=null;}
@@ -71,7 +87,7 @@ class MarcoVacuumSchedulesCard extends HTMLElement {
     if(!segments.length||!days.length){this._status="Wybierz pomieszczenia i co najmniej jeden dzień.";this._render();return;}
     const payload={vacuum_entity:this._config.vacuum_entity,name:String(d.get("name")).trim(),map_id:Number(d.get("map_id")),segments,days,time:String(d.get("time")),enabled:f.elements.enabled.checked,repeats:Number(d.get("repeats")),suction_level:Number(d.get("suction_level")),water_volume:Number(d.get("water_volume")),...(this._editing?{schedule_id:this._editing.id}:{})};
     this._busy=true;this._status="Zapisywanie…";this._render();
-    try{await this._hass.callService("marco_vacuum","save_schedule",payload);this._editing=null;this._mapId=String(payload.map_id);this._status="Harmonogram zapisany.";}
+    try{await this._hass.callService("marco_vacuum","save_schedule",payload);this._editing=null;this._draft=null;this._mapId=String(payload.map_id);this._status="Harmonogram zapisany.";}
     catch(err){this._status="Nie udało się zapisać: "+(err.message||err);}
     finally{this._busy=false;this._render();}
   }
