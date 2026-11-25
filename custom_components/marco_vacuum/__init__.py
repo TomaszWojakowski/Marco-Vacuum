@@ -26,7 +26,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.storage import Store
 
-from .const import (
+from .schedules import async_setup_entry as async_setup_schedules, register_services as register_schedule_services\n\nfrom .const import (
     CONF_VACUUM,
     DOMAIN,
     PLATFORMS,
