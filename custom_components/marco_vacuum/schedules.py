@@ -189,7 +189,17 @@ async def async_setup_entry(hass: HomeAssistant, entry, runtime: dict[str, Any])
     runtime["schedules"] = data.get("schedules", []) if isinstance(data, dict) and isinstance(data.get("schedules", []), list) else []
     runtime["last_schedule_runs"] = {}
 
-    async def tick(now) -> None:
+    async def _run_due_schedule(schedule: dict[str, Any]) -> None:
+        try:
+            await async_run_schedule(hass, runtime, schedule)
+            _LOGGER.info("Uruchomiono harmonogram Marco Vacuum: %s", schedule.get("name"))
+        except Exception:
+            _LOGGER.exception("Nie udało się uruchomić harmonogramu Marco Vacuum: %s", schedule.get("name"))
+
+    def tick(now) -> None:
+        # async_track_time_change expects a synchronous callback. Schedule the
+        # coroutine explicitly on HA's event loop and mark the date first so
+        # a long-running cleaning command cannot start twice.
         weekday = now.weekday()
         clock = now.strftime("%H:%M")
         for schedule in list(runtime["schedules"]):
@@ -199,11 +209,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, runtime: dict[str, Any])
             if runtime["last_schedule_runs"].get(schedule["id"]) == run_key:
                 continue
             runtime["last_schedule_runs"][schedule["id"]] = run_key
-            try:
-                await async_run_schedule(hass, runtime, schedule)
-                _LOGGER.info("Uruchomiono harmonogram Marco Vacuum: %s", schedule.get("name"))
-            except Exception:
-                _LOGGER.exception("Nie udało się uruchomić harmonogramu Marco Vacuum: %s", schedule.get("name"))
+            hass.async_create_task(_run_due_schedule(schedule))
 
     unsub = async_track_time_change(hass, tick, second=0)
     entry.async_on_unload(unsub)
