@@ -99,17 +99,30 @@ async def _prepare_custom_cleaning(
         shared = schedule.get("shared_settings", {})
         settings = [shared for _ in segments]
 
-    # v2.0.3 exposes these fields in vacuum_set_custom_cleaning.
-    # This X50 reports wetness_level capability, so use its 1–32 scale.
-    payload = {
-        "entity_id": entity_id,
-        "segment_id": segments,
-        "suction_level": [int(item.get("suction_level", 1)) for item in settings],
-        "repeats": [int(item.get("repeats", 1)) for item in settings],
-        "cleaning_mode": [int(item.get("cleaning_mode", 2)) for item in settings],
-        "wetness_level": [int(item.get("wetness_level", 16)) for item in settings],
-        "cleaning_route": [int(item.get("cleaning_route", 1)) for item in settings],
-    }
+    # Keep schedules created by versions before 0.2.8 working as before.
+    if (
+        schedule.get("settings_mode", "shared") == "shared"
+        and not schedule.get("shared_settings")
+        and not schedule.get("room_settings")
+    ):
+        payload = {
+            "entity_id": entity_id,
+            "segment_id": segments,
+            "suction_level": [int(schedule.get("suction_level", 1)) for _ in segments],
+            "repeats": [int(schedule.get("repeats", 1)) for _ in segments],
+            "water_volume": [int(schedule.get("water_volume", 2)) for _ in segments],
+        }
+    else:
+        # This X50 reports wetness_level capability, so use its 1–32 scale.
+        payload = {
+            "entity_id": entity_id,
+            "segment_id": segments,
+            "suction_level": [int(item.get("suction_level", 1)) for item in settings],
+            "repeats": [int(item.get("repeats", 1)) for item in settings],
+            "cleaning_mode": [int(item.get("cleaning_mode", 2)) for item in settings],
+            "wetness_level": [int(item.get("wetness_level", 16)) for item in settings],
+            "cleaning_route": [int(item.get("cleaning_route", 1)) for item in settings],
+        }
     await hass.services.async_call(
         "dreame_vacuum", "vacuum_set_custom_cleaning", payload, blocking=True
     )
