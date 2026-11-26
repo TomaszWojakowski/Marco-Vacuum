@@ -10,7 +10,7 @@ from uuid import uuid4
 
 import voluptuous as vol
 
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import async_track_time_change
@@ -188,6 +188,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, runtime: dict[str, Any])
     runtime["schedule_store"] = store
     runtime["schedules"] = data.get("schedules", []) if isinstance(data, dict) and isinstance(data.get("schedules", []), list) else []
     runtime["last_schedule_runs"] = {}
+    _LOGGER.info("Scheduler Marco Vacuum uruchomiony dla %s; wczytano %d harmonogramów", runtime["vacuum_entity"], len(runtime["schedules"]))
 
     async def _run_due_schedule(schedule: dict[str, Any]) -> None:
         try:
@@ -196,10 +197,12 @@ async def async_setup_entry(hass: HomeAssistant, entry, runtime: dict[str, Any])
         except Exception:
             _LOGGER.exception("Nie udało się uruchomić harmonogramu Marco Vacuum: %s", schedule.get("name"))
 
+    @callback
     def tick(now) -> None:
         # async_track_time_change expects a synchronous callback. Schedule the
         # coroutine explicitly on HA's event loop and mark the date first so
         # a long-running cleaning command cannot start twice.
+        now = dt_util.as_local(now)
         weekday = now.weekday()
         clock = now.strftime("%H:%M")
         for schedule in list(runtime["schedules"]):
@@ -209,6 +212,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, runtime: dict[str, Any])
             if runtime["last_schedule_runs"].get(schedule["id"]) == run_key:
                 continue
             runtime["last_schedule_runs"][schedule["id"]] = run_key
+            _LOGGER.info("Harmonogram Marco Vacuum: czas dopasowany dla %s (%s), odkurzacz %s", schedule.get("name"), schedule.get("id"), runtime["vacuum_entity"])
             hass.async_create_task(_run_due_schedule(schedule))
 
     unsub = async_track_time_change(hass, tick, second=0)
