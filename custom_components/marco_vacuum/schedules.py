@@ -113,31 +113,64 @@ async def _save(hass: HomeAssistant, call: ServiceCall) -> None:
     except ValueError as err:
         raise HomeAssistantError("Godzina musi mieć format HH:MM.") from err
 
-    schedules = runtime["schedules"]
-    index = next((i for i, old in enumerate(schedules) if old["id"] == schedule_id), None)
+    # Persist a new snapshot first. Do not mutate the live runtime list until
+    # storage has accepted and we have verified the saved data can be read back.
+    schedules = list(runtime.get("schedules", []))
+    index = next((i for i, old in enumerate(schedules) if old.get("id") == schedule_id), None)
     if index is None:
         schedules.append(item)
     else:
         schedules[index] = item
-    await runtime["schedule_store"].async_save({"schedules": schedules})
+
+    store = runtime.get("schedule_store")
+    if store is None:
+        raise HomeAssistantError("Magazyn harmonogramów nie został zainicjalizowany.")
+    try:
+        await store.async_save({"schedules": schedules})
+        stored = await store.async_load()
+    except Exception as err:
+        _LOGGER.exception("Błąd zapisu harmonogramu %s dla %s", schedule_id, runtime["vacuum_entity"])
+        raise HomeAssistantError(f"Nie udało się trwale zapisać harmonogramu: {err}") from err
+
+    saved_schedules = stored.get("schedules", []) if isinstance(stored, dict) else []
+    if not any(isinstance(saved, dict) and saved.get("id") == schedule_id for saved in saved_schedules):
+        _LOGGER.error(
+            "Weryfikacja zapisu harmonogramu nie powiodła się: id=%s vacuum=%s storage_key=%s",
+            schedule_id, runtime["vacuum_entity"], getattr(store, "key", "unknown"),
+        )
+        raise HomeAssistantError("Home Assistant nie potwierdził trwałego zapisu harmonogramu. Sprawdź dziennik integracji.")
+
+    runtime["schedules"] = saved_schedules
+    _LOGGER.info(
+        "Trwale zapisano harmonogram %s (%s) dla %s; łącznie: %d",
+        item["name"], schedule_id, runtime["vacuum_entity"], len(saved_schedules),
+    )
     sensor = runtime.get("sensor")
     if sensor:
-        # Publishing the updated attributes is synchronous; do not block the
-        # service response on an entity refresh cycle.
         sensor.async_write_ha_state()
 
 
 async def _delete(hass: HomeAssistant, call: ServiceCall) -> None:
     runtime = _runtime(hass, call)
-    before = len(runtime["schedules"])
-    runtime["schedules"] = [item for item in runtime["schedules"] if item["id"] != call.data["schedule_id"]]
-    if len(runtime["schedules"]) == before:
+    current = list(runtime.get("schedules", []))
+    updated = [item for item in current if item.get("id") != call.data["schedule_id"]]
+    if len(updated) == len(current):
         raise HomeAssistantError("Nie znaleziono harmonogramu.")
-    await runtime["schedule_store"].async_save({"schedules": runtime["schedules"]})
+    store = runtime.get("schedule_store")
+    if store is None:
+        raise HomeAssistantError("Magazyn harmonogramów nie został zainicjalizowany.")
+    try:
+        await store.async_save({"schedules": updated})
+        stored = await store.async_load()
+    except Exception as err:
+        _LOGGER.exception("Błąd usuwania harmonogramu %s dla %s", call.data["schedule_id"], runtime["vacuum_entity"])
+        raise HomeAssistantError(f"Nie udało się trwale usunąć harmonogramu: {err}") from err
+    saved_schedules = stored.get("schedules", []) if isinstance(stored, dict) else []
+    if any(isinstance(saved, dict) and saved.get("id") == call.data["schedule_id"] for saved in saved_schedules):
+        raise HomeAssistantError("Home Assistant nie potwierdził usunięcia harmonogramu.")
+    runtime["schedules"] = saved_schedules
     sensor = runtime.get("sensor")
     if sensor:
-        # Publishing the updated attributes is synchronous; do not block the
-        # service response on an entity refresh cycle.
         sensor.async_write_ha_state()
 
 
