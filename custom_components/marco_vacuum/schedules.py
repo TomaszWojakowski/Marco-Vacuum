@@ -38,8 +38,68 @@ def _runtime(hass: HomeAssistant, call: ServiceCall) -> dict[str, Any]:
     return found
 
 
+async def _select_option(hass: HomeAssistant, entity_id: str, option: str) -> None:
+    """Select an option on an entity, with a useful error if unavailable."""
+    state = hass.states.get(entity_id)
+    if state is None or state.state in ("unavailable", "unknown"):
+        raise HomeAssistantError(f"Encja {entity_id} jest niedostępna.")
+    await hass.services.async_call(
+        "select", "select_option",
+        {"entity_id": entity_id, "option": option},
+        blocking=True,
+    )
+
+
+async def _wait_for_entity(hass: HomeAssistant, entity_id: str, timeout: int = 15) -> None:
+    """Wait until an entity becomes available."""
+    for _ in range(timeout):
+        state = hass.states.get(entity_id)
+        if state and state.state not in ("unavailable", "unknown"):
+            return
+        await asyncio.sleep(1)
+    raise HomeAssistantError(f"Encja {entity_id} nie stała się dostępna.")
+
+
+async def _prepare_custom_cleaning(
+    hass: HomeAssistant, entity_id: str, schedule: dict[str, Any]
+) -> None:
+    """Apply the saved per-room settings using Dreame's supported service."""
+    object_id = entity_id.split(".", 1)[1]
+    genius_entity = f"select.{object_id}_cleangenius"
+    custom_entity = f"switch.{object_id}_customized_cleaning"
+
+    # CleanGenius and customized cleaning cannot be active together on Dreame.
+    await _select_option(hass, genius_entity, "off")
+    await _wait_for_entity(hass, custom_entity)
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": custom_entity}, blocking=True
+    )
+
+    segments = [int(value) for value in schedule["segments"]]
+    if schedule.get("settings_mode", "shared") == "individual":
+        room_settings = schedule.get("room_settings", {})
+        settings = [room_settings.get(str(segment), {}) for segment in segments]
+    else:
+        shared = schedule.get("shared_settings", {})
+        settings = [shared for _ in segments]
+
+    # v2.0.3 exposes these fields in vacuum_set_custom_cleaning.
+    # This X50 reports wetness_level capability, so use its 1–32 scale.
+    payload = {
+        "entity_id": entity_id,
+        "segment_id": segments,
+        "suction_level": [int(item.get("suction_level", 1)) for item in settings],
+        "repeats": [int(item.get("repeats", 1)) for item in settings],
+        "cleaning_mode": [int(item.get("cleaning_mode", 2)) for item in settings],
+        "wetness_level": [int(item.get("wetness_level", 16)) for item in settings],
+    }
+    await hass.services.async_call(
+        "dreame_vacuum", "vacuum_set_custom_cleaning", payload, blocking=True
+    )
+
+
 async def async_run_schedule(hass: HomeAssistant, runtime: dict[str, Any], schedule: dict[str, Any]) -> None:
-    """Select the schedule map and start cleaning its selected segments."""
+    """Apply the schedule mode, select its map, and start the selected rooms."""
     entity_id = runtime["vacuum_entity"]
     state = hass.states.get(entity_id)
     if state is None or state.state in ("unavailable", "unknown"):
@@ -52,8 +112,6 @@ async def async_run_schedule(hass: HomeAssistant, runtime: dict[str, Any], sched
             {"entity_id": entity_id, "map_id": map_id},
             blocking=True,
         )
-        # Wait for the integration to report the newly selected map before
-        # sending segment IDs, which are map-specific.
         for _ in range(30):
             state = hass.states.get(entity_id)
             if state and str(state.attributes.get("selected_map_id")) == str(map_id):
@@ -62,15 +120,29 @@ async def async_run_schedule(hass: HomeAssistant, runtime: dict[str, Any], sched
         else:
             raise HomeAssistantError(f"Robot nie przełączył się na mapę {map_id}.")
 
-    payload = {
-        "entity_id": entity_id,
-        "segments": [int(item) for item in schedule["segments"]],
-    }
-    for key in ("repeats", "suction_level", "water_volume"):
-        if schedule.get(key) is not None:
-            payload[key] = int(schedule[key])
+    object_id = entity_id.split(".", 1)[1]
+    if schedule.get("cleaning_type", "custom") == "cleangenius":
+        custom_entity = f"switch.{object_id}_customized_cleaning"
+        custom_state = hass.states.get(custom_entity)
+        if custom_state and custom_state.state == "on":
+            await hass.services.async_call(
+                "switch", "turn_off", {"entity_id": custom_entity}, blocking=True
+            )
+        await _select_option(
+            hass, f"select.{object_id}_cleangenius",
+            schedule.get("cleangenius", "routine_cleaning"),
+        )
+        await _select_option(
+            hass, f"select.{object_id}_cleangenius_mode",
+            schedule.get("cleangenius_mode", "mop_after_vacuum"),
+        )
+    else:
+        await _prepare_custom_cleaning(hass, entity_id, schedule)
+
     await hass.services.async_call(
-        "dreame_vacuum", "vacuum_clean_segment", payload, blocking=True
+        "dreame_vacuum", "vacuum_clean_segment",
+        {"entity_id": entity_id, "segments": [int(item) for item in schedule["segments"]]},
+        blocking=True,
     )
 
 
@@ -102,10 +174,54 @@ async def _save(hass: HomeAssistant, call: ServiceCall) -> None:
         "segment_names": [room["name"] for room in selected_map["rooms"] if room["id"] in segments],
         "time": call.data["time"],
         "days": days,
-        "repeats": int(call.data["repeats"]),
-        "suction_level": int(call.data["suction_level"]),
-        "water_volume": int(call.data["water_volume"]),
+        "repeats": int(call.data.get("repeats", 1)),
+        "suction_level": int(call.data.get("suction_level", 1)),
+        "water_volume": int(call.data.get("water_volume", 2)),
+        "cleaning_type": call.data.get("cleaning_type", "custom"),
+        "cleangenius": call.data.get("cleangenius", "routine_cleaning"),
+        "cleangenius_mode": call.data.get("cleangenius_mode", "mop_after_vacuum"),
+        "settings_mode": call.data.get("settings_mode", "shared"),
+        "shared_settings": dict(call.data.get("shared_settings", {})),
+        "room_settings": dict(call.data.get("room_settings", {})),
     }
+    if item["cleaning_type"] not in ("custom", "cleangenius"):
+        raise HomeAssistantError("Nieprawidłowy tryb sprzątania.")
+    if item["cleangenius"] not in ("off", "routine_cleaning", "deep_cleaning"):
+        raise HomeAssistantError("Nieprawidłowy wariant CleanGenius.")
+    if item["cleangenius_mode"] not in ("vacuum_and_mop", "mop_after_vacuum"):
+        raise HomeAssistantError("Nieprawidłowy sposób pracy CleanGenius.")
+    if item["settings_mode"] not in ("shared", "individual"):
+        raise HomeAssistantError("Nieprawidłowy sposób konfiguracji pomieszczeń.")
+
+    def _validate_settings(raw: dict[str, Any]) -> dict[str, int]:
+        try:
+            settings = {
+                "cleaning_mode": int(raw.get("cleaning_mode", 2)),
+                "suction_level": int(raw.get("suction_level", 1)),
+                "wetness_level": int(raw.get("wetness_level", 16)),
+                "repeats": int(raw.get("repeats", 1)),
+            }
+        except (TypeError, ValueError) as err:
+            raise HomeAssistantError("Parametry sprzątania muszą być liczbami.") from err
+        if settings["cleaning_mode"] not in (0, 1, 2):
+            raise HomeAssistantError("Nieobsługiwany tryb sprzątania (wybierz 0–2).")
+        if settings["suction_level"] not in range(4):
+            raise HomeAssistantError("Siła ssania musi mieć wartość 0–3.")
+        if settings["wetness_level"] not in range(1, 33):
+            raise HomeAssistantError("Wilgotność musi mieć wartość 1–32.")
+        if settings["repeats"] not in (1, 2, 3):
+            raise HomeAssistantError("Liczba powtórzeń musi wynosić 1–3.")
+        return settings
+
+    if item["settings_mode"] == "shared":
+        item["shared_settings"] = _validate_settings(item["shared_settings"])
+        item["room_settings"] = {}
+    else:
+        item["room_settings"] = {
+            str(segment): _validate_settings(item["room_settings"].get(str(segment), {}))
+            for segment in segments
+        }
+
     if not item["name"]:
         raise HomeAssistantError("Podaj nazwę harmonogramu.")
     try:
@@ -202,9 +318,15 @@ def register_services(hass: HomeAssistant) -> None:
         vol.Required("days"): vol.All(cv.ensure_list, [vol.All(vol.Coerce(int), vol.Range(min=0, max=6))]),
         vol.Required("time"): cv.string,
         vol.Required("enabled"): cv.boolean,
-        vol.Required("repeats"): vol.All(vol.Coerce(int), vol.Range(min=1, max=3)),
-        vol.Required("suction_level"): vol.All(vol.Coerce(int), vol.Range(min=0, max=3)),
-        vol.Required("water_volume"): vol.All(vol.Coerce(int), vol.Range(min=1, max=3)),
+        vol.Optional("repeats", default=1): vol.All(vol.Coerce(int), vol.Range(min=1, max=3)),
+        vol.Optional("suction_level", default=1): vol.All(vol.Coerce(int), vol.Range(min=0, max=3)),
+        vol.Optional("water_volume", default=2): vol.All(vol.Coerce(int), vol.Range(min=1, max=3)),
+        vol.Optional("cleaning_type", default="custom"): vol.In(["custom", "cleangenius"]),
+        vol.Optional("cleangenius", default="routine_cleaning"): vol.In(["off", "routine_cleaning", "deep_cleaning"]),
+        vol.Optional("cleangenius_mode", default="mop_after_vacuum"): vol.In(["vacuum_and_mop", "mop_after_vacuum"]),
+        vol.Optional("settings_mode", default="shared"): vol.In(["shared", "individual"]),
+        vol.Optional("shared_settings", default={}): dict,
+        vol.Optional("room_settings", default={}): dict,
         vol.Optional("schedule_id"): cv.string,
         vol.Optional(CONF_VACUUM): cv.entity_id,
     }))
