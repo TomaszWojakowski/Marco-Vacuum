@@ -60,6 +60,22 @@ async def _wait_for_entity(hass: HomeAssistant, entity_id: str, timeout: int = 1
     raise HomeAssistantError(f"Encja {entity_id} nie stała się dostępna.")
 
 
+async def _wait_for_select_option(
+    hass: HomeAssistant, entity_id: str, option: str, timeout: int = 15
+) -> None:
+    """Wait until a select exposes the requested option."""
+    for _ in range(timeout):
+        state = hass.states.get(entity_id)
+        if state and state.state not in ("unavailable", "unknown"):
+            options = state.attributes.get("options", [])
+            if option in options:
+                return
+        await asyncio.sleep(1)
+    raise HomeAssistantError(
+        f"Opcja {option} nie jest dostępna w encji {entity_id}."
+    )
+
+
 async def _prepare_custom_cleaning(
     hass: HomeAssistant, entity_id: str, schedule: dict[str, Any]
 ) -> None:
@@ -129,14 +145,12 @@ async def async_run_schedule(hass: HomeAssistant, runtime: dict[str, Any], sched
             await hass.services.async_call(
                 "switch", "turn_off", {"entity_id": custom_entity}, blocking=True
             )
-        await _select_option(
-            hass, f"select.{object_id}_cleangenius",
-            schedule.get("cleangenius", "routine_cleaning"),
-        )
-        await _select_option(
-            hass, f"select.{object_id}_cleangenius_mode",
-            schedule.get("cleangenius_mode", "mop_after_vacuum"),
-        )
+        genius_value = schedule.get("cleangenius", "routine_cleaning")
+        await _select_option(hass, f"select.{object_id}_cleangenius", genius_value)
+        mode_entity = f"select.{object_id}_cleangenius_mode"
+        mode_value = schedule.get("cleangenius_mode", "mop_after_vacuum")
+        await _wait_for_select_option(hass, mode_entity, mode_value)
+        await _select_option(hass, mode_entity, mode_value)
     else:
         await _prepare_custom_cleaning(hass, entity_id, schedule)
 
