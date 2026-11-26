@@ -1,7 +1,7 @@
 class MarcoVacuumSchedulesCard extends HTMLElement {
   constructor() {
     super(); this.attachShadow({mode:"open"}); this._hass=null; this._config=null;
-    this._sensor=null; this._editing=null; this._draft=null; this._busy=false; this._status=""; this._signature=null; this._mapId="";
+    this._sensor=null; this._editing=null; this._draft=null; this._busy=false; this._status=""; this._statusError=false; this._signature=null; this._mapId=""; this._pendingSchedules=new Map();
     this.shadowRoot.addEventListener("click",e=>this._click(e));
     this.shadowRoot.addEventListener("change",e=>this._change(e));
     this.shadowRoot.addEventListener("submit",e=>this._submit(e));
@@ -10,7 +10,7 @@ class MarcoVacuumSchedulesCard extends HTMLElement {
   set hass(h){
     this._hass=h;
     const s=Object.values(h.states).find(x=>x.attributes?.vacuum_entity===this._config?.vacuum_entity&&Array.isArray(x.attributes?.schedules));
-    if(s)this._sensor=s;
+    if(s){const schedules=[...(s.attributes.schedules||[])];for(const [id,item] of this._pendingSchedules){if(schedules.some(x=>x.id===id))this._pendingSchedules.delete(id);else schedules.push(item);}this._sensor={...s,attributes:{...s.attributes,schedules}};}
     const sig=JSON.stringify([this._sensor?.state,this._sensor?.attributes?.schedules,this._sensor?.attributes?.maps]);
     if(sig!==this._signature){this._signature=sig;this._render();}
   }
@@ -47,7 +47,7 @@ class MarcoVacuumSchedulesCard extends HTMLElement {
       .muted,.meta{color:var(--secondary-text-color);font-size:.85rem}.field{display:block;margin:10px 0}.field span{display:block;font-size:.84rem;color:var(--secondary-text-color);margin-bottom:5px}
       input,select{box-sizing:border-box;width:100%;min-width:0;max-width:100%;min-height:40px;padding:8px 10px;border:1px solid var(--divider-color);border-radius:8px;background:var(--card-background-color);color:var(--primary-text-color);font:inherit}
       .days{display:grid;grid-template-columns:repeat(auto-fit,minmax(75px,1fr));gap:7px}.rooms{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:7px}.check{display:flex;align-items:center;gap:6px;padding:8px;border:1px solid var(--divider-color);border-radius:8px;font-size:.88rem}.check input{width:auto;min-height:0}
-      .grid{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;width:100%;min-width:0;box-sizing:border-box}.grid>.field,.field{display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box}.grid input,.grid select{display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box}.grid input[type="time"]{-webkit-appearance:none;appearance:none;min-inline-size:0;inline-size:100%}.actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
+      .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;width:100%;min-width:0;box-sizing:border-box}.grid>.field,.field{display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box}.grid input,.grid select{display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box}.grid input[type="time"]{-webkit-appearance:none;appearance:none;min-inline-size:0;inline-size:100%}.status.error{color:var(--error-color);font-weight:600}.actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
       button{border:0;border-radius:8px;padding:9px 12px;background:var(--secondary-background-color);color:var(--primary-text-color);font:inherit;cursor:pointer}
       button.primary{background:var(--primary-color);color:var(--text-primary-color,white)}button.danger{color:var(--error-color)}button:disabled{opacity:.5}
       .item{border-top:1px solid var(--divider-color);padding:12px 0}.itemhead{display:flex;justify-content:space-between;gap:10px}.name{font-weight:600}.status{margin-top:10px;color:var(--secondary-text-color);font-size:.88rem}
@@ -55,7 +55,7 @@ class MarcoVacuumSchedulesCard extends HTMLElement {
     </style><ha-card><h2>Harmonogramy Marco</h2>
       <div class="muted">Odkurzacz: ${this._esc(this._config.vacuum_entity)}</div>
       <form id="schedule-form">
-        <label class="field"><span>Nazwa harmonogramu</span><input name="name" maxlength="80" required value="${this._esc(g.name||"")}" placeholder="np. Parter – codziennie"></label>
+        <label class="field"><span>Nazwa harmonogramu</span><input name="name" maxlength="80" value="${this._esc(g.name||"")}" placeholder="np. Parter – codziennie"></label>
         <label class="field"><span>Mapa</span><select name="map_id">${maps.map(m=>`<option value="${m.map_id}" ${String(m.map_id)===mapId?"selected":""}>${this._esc(m.name)}</option>`).join("")}</select></label>
         <h3>Pomieszczenia</h3><div class="rooms">${(map?.rooms||[]).map(r=>`<label class="check"><input type="checkbox" name="segments" value="${r.id}" ${selected.has(Number(r.id))?"checked":""}><span>${this._esc(r.name)}</span></label>`).join("")}</div>
         <h3>Dni tygodnia</h3><div class="days">${days.map((d,i)=>`<label class="check"><input type="checkbox" name="days" value="${i}" ${(g.days||[0,1,2,3,4,5,6]).includes(i)?"checked":""}><span>${d}</span></label>`).join("")}</div>
@@ -70,7 +70,7 @@ class MarcoVacuumSchedulesCard extends HTMLElement {
       </form>
       <h3>Zapisane harmonogramy (${list.length})</h3>
       ${list.length?list.map(s=>`<div class="item"><div class="itemhead"><div><div class="name">${this._esc(s.name)} ${s.enabled?"":"(wyłączony)"}</div><div class="meta">${this._esc(s.map_name)} · ${this._esc(s.time)} · ${(s.days||[]).map(d=>days[d]).join(", ")}</div><div class="meta">${this._esc((s.segment_names||[]).join(", "))}</div></div></div><div class="actions"><button data-action="run" data-id="${this._esc(s.id)}">Uruchom teraz</button><button data-action="edit" data-id="${this._esc(s.id)}">Edytuj</button><button class="danger" data-action="delete" data-id="${this._esc(s.id)}">Usuń</button></div></div>`).join(""):'<div class="muted">Brak zapisanych harmonogramów.</div>'}
-      <div class="status" role="status">${this._esc(this._status)}</div>
+      <div class="status ${this._statusError?"error":""}" role="status">${this._esc(this._status)}</div>
     </ha-card>`;
   }
   _change(e){
@@ -103,15 +103,29 @@ class MarcoVacuumSchedulesCard extends HTMLElement {
     catch(err){this._status="Błąd: "+(err.message||err);}
     finally{this._busy=false;this._render();}
   }
-  async _submit(e){if(e.target.id!=="schedule-form")return;e.preventDefault();if(this._busy)return;const f=e.target,d=new FormData(f);
-    const segments=[...f.querySelectorAll('input[name="segments"]:checked')].map(x=>Number(x.value)),days=[...f.querySelectorAll('input[name="days"]:checked')].map(x=>Number(x.value));
-    if(!segments.length||!days.length){this._status="Wybierz pomieszczenia i co najmniej jeden dzień.";this._render();return;}
-    const payload={vacuum_entity:this._config.vacuum_entity,name:String(d.get("name")).trim(),map_id:Number(d.get("map_id")),segments,days,time:String(d.get("time")),enabled:f.elements.enabled.checked,repeats:Number(d.get("repeats")),suction_level:Number(d.get("suction_level")),water_volume:Number(d.get("water_volume")),schedule_id:this._editing?.id||("schedule-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,10))};
-    this._busy=true;this._status="Zapisywanie…";this._render();
-    try{await this._hass.callService("marco_vacuum","save_schedule",payload);this._editing=null;this._draft=null;this._mapId=String(payload.map_id);const current=this._sensor||{};const attrs=current.attributes||{};const map=(attrs.maps||[]).find(x=>Number(x.map_id)===payload.map_id);const names=(map?.rooms||[]).filter(x=>segments.includes(Number(x.id))).map(x=>x.name);const item={id:payload.schedule_id,name:payload.name,enabled:payload.enabled,map_id:payload.map_id,map_name:map?.name||"",segments,segment_names:names,days,time:payload.time,repeats:payload.repeats,suction_level:payload.suction_level,water_volume:payload.water_volume};this._sensor={...current,attributes:{...attrs,schedules:[...(attrs.schedules||[]).filter(x=>x.id!==item.id),item]}};this._signature=JSON.stringify([this._sensor.state,this._sensor.attributes.schedules,this._sensor.attributes.maps]);this._status="Harmonogram zapisany.";try{await this._refreshSensor({scheduleId:payload.schedule_id});}catch(refreshError){/* Keep the just-saved item visible until HA publishes the updated sensor. */}}
-    catch(err){this._status="Nie udało się zapisać: "+(err.message||err);}
-    finally{this._busy=false;this._render();}
-  }
-}
+  async _submit(e){
+    if(e.target.id!=="schedule-form")return;
+    e.preventDefault();
+    if(this._busy)return;
+    const f=e.target,d=new FormData(f);
+    const draft={name:String(d.get("name")||""),map_id:Number(d.get("map_id")),segments:[...f.querySelectorAll('input[name="segments"]:checked')].map(x=>Number(x.value)),days:[...f.querySelectorAll('input[name="days"]:checked')].map(x=>Number(x.value)),time:String(d.get("time")||"07:00"),repeats:Number(d.get("repeats")||1),suction_level:Number(d.get("suction_level")||0),water_volume:Number(d.get("water_volume")||1),enabled:f.elements.enabled.checked};
+    this._draft=draft;
+    const name=draft.name.trim();
+    if(!name){this._status="Wpisz nazwę harmonogramu.";this._statusError=true;this._render();return;}
+    if(!draft.segments.length||!draft.days.length){this._status="Wybierz pomieszczenia i co najmniej jeden dzień.";this._statusError=true;this._render();return;}
+    const payload={vacuum_entity:this._config.vacuum_entity,name,map_id:draft.map_id,segments:draft.segments,days:draft.days,time:draft.time,enabled:draft.enabled,repeats:draft.repeats,suction_level:draft.suction_level,water_volume:draft.water_volume,schedule_id:this._editing?.id||("schedule-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,10))};
+    this._busy=true;this._status="Zapisywanie…";this._statusError=false;this._render();
+    try{
+      await this._hass.callService("marco_vacuum","save_schedule",payload);
+      const current=this._sensor||{},attrs=current.attributes||{},map=(attrs.maps||[]).find(x=>Number(x.map_id)===payload.map_id);
+      const names=(map?.rooms||[]).filter(x=>payload.segments.includes(Number(x.id))).map(x=>x.name);
+      const item={id:payload.schedule_id,name:payload.name,enabled:payload.enabled,map_id:payload.map_id,map_name:map?.name||"",segments:payload.segments,segment_names:names,days:payload.days,time:payload.time,repeats:payload.repeats,suction_level:payload.suction_level,water_volume:payload.water_volume};
+      this._pendingSchedules.set(item.id,item);
+      this._sensor={...current,attributes:{...attrs,schedules:[...(attrs.schedules||[]).filter(x=>x.id!==item.id),item]}};
+      this._signature=JSON.stringify([this._sensor.state,this._sensor.attributes.schedules,this._sensor.attributes.maps]);
+      this._editing=null;this._draft=null;this._mapId=String(payload.map_id);this._status="Harmonogram zapisany.";this._statusError=false;this._render();
+    }catch(err){this._status="Nie udało się zapisać: "+(err.message||err);this._statusError=true;this._render();}
+    finally{this._busy=false;const button=this.shadowRoot.querySelector('button[type="submit"]');if(button)button.disabled=false;}
+  }}
 if(!customElements.get("marco-vacuum-schedules-card"))customElements.define("marco-vacuum-schedules-card",MarcoVacuumSchedulesCard);
 window.customCards=window.customCards||[];if(!window.customCards.some(x=>x.type==="marco-vacuum-schedules-card"))window.customCards.push({type:"marco-vacuum-schedules-card",name:"Marco Vacuum – harmonogramy",description:"Harmonogramy sprzątania wybranych pomieszczeń."});
