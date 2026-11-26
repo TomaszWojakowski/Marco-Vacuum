@@ -102,6 +102,11 @@ class MarcoVacuumSchedulesCard extends HTMLElement {
       if(draft.settings_mode==="individual"&&!Object.keys(draft.room_settings).length)for(const id of draft.segments)draft.room_settings[String(id)]={...draft.shared_settings};
       if(this._editing)this._editing=draft;else this._draft=draft;this._render();return;
     }
+    if(e.target.name==="segments"&&(this._editing?.settings_mode==="individual"||this._draft?.settings_mode==="individual")){
+      const f=e.target.form,d=new FormData(f),cur=this._editing||this._draft||{};
+      const draft={...cur,name:String(d.get("name")||""),map_id:Number(d.get("map_id")),segments:[...f.querySelectorAll('input[name="segments"]:checked')].map(x=>Number(x.value)),days:[...f.querySelectorAll('input[name="days"]:checked')].map(x=>Number(x.value)),time:String(d.get("time")||"07:00"),enabled:f.elements.enabled.checked,cleaning_type:String(d.get("cleaning_type")||"custom"),settings_mode:"individual",shared_settings:this._readSettings(d,"shared"),room_settings:this._readRoomSettings(f),cleangenius:String(d.get("cleangenius")||"routine_cleaning"),cleangenius_mode:String(d.get("cleangenius_mode")||"mop_after_vacuum")};
+      if(this._editing)this._editing=draft;else this._draft=draft;this._render();return;
+    }
     if(e.target.name==="map_id"){
       const f=e.target.form,d=new FormData(f);
       this._draft={
