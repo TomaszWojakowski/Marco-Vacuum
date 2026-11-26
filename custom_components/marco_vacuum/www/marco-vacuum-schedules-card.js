@@ -15,6 +15,13 @@ class MarcoVacuumSchedulesCard extends HTMLElement {
     if(sig!==this._signature){this._signature=sig;this._render();}
   }
   _a(){return this._sensor?.attributes||{}}
+  async _refreshSensor(){
+    const states=await this._hass.callWS({type:"get_states"});
+    const sensor=states.find(s=>s.attributes?.vacuum_entity===this._config?.vacuum_entity&&Array.isArray(s.attributes?.schedules));
+    if(!sensor)throw new Error("Nie znaleziono encji z harmonogramami Marco Vacuum.");
+    this._sensor=sensor;
+    this._signature=JSON.stringify([sensor.state,sensor.attributes.schedules,sensor.attributes.maps]);
+  }
   _esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
   _maps(){return this._a().maps||[]}
   _schedules(){return this._a().schedules||[]}
@@ -27,9 +34,9 @@ class MarcoVacuumSchedulesCard extends HTMLElement {
     this.shadowRoot.innerHTML=`<style>
       :host{display:block;color:var(--primary-text-color)}ha-card{padding:16px}h2{font-size:1.2rem;margin:0 0 12px}h3{font-size:1rem;margin:18px 0 8px}
       .muted,.meta{color:var(--secondary-text-color);font-size:.85rem}.field{display:block;margin:10px 0}.field span{display:block;font-size:.84rem;color:var(--secondary-text-color);margin-bottom:5px}
-      input,select{box-sizing:border-box;width:100%;min-height:40px;padding:8px 10px;border:1px solid var(--divider-color);border-radius:8px;background:var(--card-background-color);color:var(--primary-text-color);font:inherit}
-      .days,.rooms{display:grid;grid-template-columns:repeat(auto-fit,minmax(75px,1fr));gap:7px}.check{display:flex;align-items:center;gap:6px;padding:8px;border:1px solid var(--divider-color);border-radius:8px;font-size:.88rem}.check input{width:auto;min-height:0}
-      .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
+      input,select{box-sizing:border-box;width:100%;min-width:0;max-width:100%;min-height:40px;padding:8px 10px;border:1px solid var(--divider-color);border-radius:8px;background:var(--card-background-color);color:var(--primary-text-color);font:inherit}
+      .days{display:grid;grid-template-columns:repeat(auto-fit,minmax(75px,1fr));gap:7px}.rooms{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:7px}.check{display:flex;align-items:center;gap:6px;padding:8px;border:1px solid var(--divider-color);border-radius:8px;font-size:.88rem}.check input{width:auto;min-height:0}
+      .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.grid>.field{min-width:0}.field{min-width:0}.actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
       button{border:0;border-radius:8px;padding:9px 12px;background:var(--secondary-background-color);color:var(--primary-text-color);font:inherit;cursor:pointer}
       button.primary{background:var(--primary-color);color:var(--text-primary-color,white)}button.danger{color:var(--error-color)}button:disabled{opacity:.5}
       .item{border-top:1px solid var(--divider-color);padding:12px 0}.itemhead{display:flex;justify-content:space-between;gap:10px}.name{font-weight:600}.status{margin-top:10px;color:var(--secondary-text-color);font-size:.88rem}
@@ -81,7 +88,7 @@ class MarcoVacuumSchedulesCard extends HTMLElement {
     if(action==="edit"){this._editing={...s};this._draft=null;this._mapId=String(s.map_id);this._render();return;}
     if(action==="delete"&&!window.confirm("Usunąć harmonogram „"+s.name+"”?"))return;
     this._busy=true;this._status=action==="run"?"Uruchamianie…":"Usuwanie…";this._render();
-    try{await this._hass.callService("marco_vacuum",action==="run"?"run_schedule":"delete_schedule",{vacuum_entity:this._config.vacuum_entity,schedule_id:id});this._status=action==="run"?"Wysłano polecenie uruchomienia.":"Harmonogram usunięty.";if(action==="delete"&&this._editing?.id===id)this._editing=null;}
+    try{await this._hass.callService("marco_vacuum",action==="run"?"run_schedule":"delete_schedule",{vacuum_entity:this._config.vacuum_entity,schedule_id:id});if(action==="delete"){await this._refreshSensor();this._status="Harmonogram usunięty.";if(this._editing?.id===id)this._editing=null;}else{this._status="Wysłano polecenie uruchomienia.";}}
     catch(err){this._status="Błąd: "+(err.message||err);}
     finally{this._busy=false;this._render();}
   }
@@ -90,7 +97,7 @@ class MarcoVacuumSchedulesCard extends HTMLElement {
     if(!segments.length||!days.length){this._status="Wybierz pomieszczenia i co najmniej jeden dzień.";this._render();return;}
     const payload={vacuum_entity:this._config.vacuum_entity,name:String(d.get("name")).trim(),map_id:Number(d.get("map_id")),segments,days,time:String(d.get("time")),enabled:f.elements.enabled.checked,repeats:Number(d.get("repeats")),suction_level:Number(d.get("suction_level")),water_volume:Number(d.get("water_volume")),...(this._editing?{schedule_id:this._editing.id}:{})};
     this._busy=true;this._status="Zapisywanie…";this._render();
-    try{await this._hass.callService("marco_vacuum","save_schedule",payload);this._editing=null;this._draft=null;this._mapId=String(payload.map_id);this._status="Harmonogram zapisany.";}
+    try{await this._hass.callService("marco_vacuum","save_schedule",payload);this._editing=null;this._draft=null;this._mapId=String(payload.map_id);await this._refreshSensor();this._status="Harmonogram zapisany.";}
     catch(err){this._status="Nie udało się zapisać: "+(err.message||err);}
     finally{this._busy=false;this._render();}
   }
