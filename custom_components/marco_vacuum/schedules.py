@@ -92,6 +92,7 @@ async def _prepare_custom_cleaning(
         "repeats": [int(item.get("repeats", 1)) for item in settings],
         "cleaning_mode": [int(item.get("cleaning_mode", 2)) for item in settings],
         "wetness_level": [int(item.get("wetness_level", 16)) for item in settings],
+        "cleaning_route": [int(item.get("cleaning_route", 1)) for item in settings],
     }
     await hass.services.async_call(
         "dreame_vacuum", "vacuum_set_custom_cleaning", payload, blocking=True
@@ -199,6 +200,7 @@ async def _save(hass: HomeAssistant, call: ServiceCall) -> None:
                 "cleaning_mode": int(raw.get("cleaning_mode", 2)),
                 "suction_level": int(raw.get("suction_level", 1)),
                 "wetness_level": int(raw.get("wetness_level", 16)),
+                "cleaning_route": int(raw.get("cleaning_route", 1)),
                 "repeats": int(raw.get("repeats", 1)),
             }
         except (TypeError, ValueError) as err:
@@ -209,6 +211,8 @@ async def _save(hass: HomeAssistant, call: ServiceCall) -> None:
             raise HomeAssistantError("Siła ssania musi mieć wartość 0–3.")
         if settings["wetness_level"] not in range(1, 33):
             raise HomeAssistantError("Wilgotność musi mieć wartość 1–32.")
+        if settings["cleaning_route"] not in (1, 2, 3, 4):
+            raise HomeAssistantError("Trasa sprzątania musi mieć wartość 1–4.")
         if settings["repeats"] not in (1, 2, 3):
             raise HomeAssistantError("Liczba powtórzeń musi wynosić 1–3.")
         return settings
