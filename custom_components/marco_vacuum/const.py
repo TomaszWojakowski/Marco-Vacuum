@@ -1,7 +1,7 @@
 """Constants for Marco Vacuum."""
 
 DOMAIN = "marco_vacuum"
-PLATFORMS = ["sensor"]
+PLATFORMS = ["sensor", "binary_sensor"]
 
 CONF_VACUUM = "vacuum_entity"
 
