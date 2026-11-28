@@ -133,7 +133,7 @@ async def async_refresh_daily_history(
     ]
 
     # Process chronologically so the last observed result becomes the current status.
-    indexed_today.sort(key=lambda pair: getattr(pair[1], "date", None) or datetime.min)
+    indexed_today.reverse()
     for index, item in indexed_today:
         try:
             map_data = await hass.async_add_executor_job(device.history_map, index)
