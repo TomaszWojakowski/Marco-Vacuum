@@ -2,9 +2,9 @@ class MarcoVacuumHistoryCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({mode:"open"});
-    this._config=null;this._hass=null;this._sensor=null;this._mapId="";
+    this._config=null;this._hass=null;this._sensor=null;
     this._selected=new Set();this._selectionDate=null;this._showSettings=false;
-    this._busy=false;this._status="";this._statusError=false;
+    this._busy=false;this._status="";
     this.shadowRoot.addEventListener("click",e=>this._click(e));
     this.shadowRoot.addEventListener("change",e=>this._change(e));
     this.shadowRoot.addEventListener("submit",e=>this._submit(e));
@@ -22,35 +22,56 @@ class MarcoVacuumHistoryCard extends HTMLElement {
       Array.isArray(s.attributes?.maps) && Array.isArray(s.attributes?.daily_history)
     );
     if(!sensor)return;
+    const oldSensor=this._sensor;
     const date=sensor.attributes.daily_history_date||"";
-    const changed=!this._sensor||date!==this._selectionDate;
     this._sensor=sensor;
-    const maps=this._maps();
-    if(!this._mapId&&maps.length)this._mapId=String(maps[0].map_id);
-    if(changed)this._selectFailedRooms();
+    const historyChanged=!oldSensor || oldSensor.attributes.daily_history_updated!==sensor.attributes.daily_history_updated;
+    if(date!==this._selectionDate){
+      this._selectionDate=date;
+      this._selectFailedRooms();
+    } else if(historyChanged && !this._userChangedSelection){
+      this._selectFailedRooms();
+    }
     this._render();
   }
-  getCardSize(){return 6;}
+  getCardSize(){return 8;}
   static getStubConfig(){return {vacuum_entity:"vacuum.marco"};}
   _esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
   _maps(){return this._sensor?.attributes?.maps||[];}
   _history(){return this._sensor?.attributes?.daily_history||[];}
   _key(r){return String(r.map_id)+":"+String(r.room_id);}
   _selectFailedRooms(){
-    this._selectionDate=this._sensor?.attributes?.daily_history_date||"";
-    this._selected=new Set(this._history().filter(r=>String(r.map_id)===String(this._mapId)&&r.last_status==="error").map(r=>this._key(r)));
+    this._selected=new Set(this._history().filter(r=>r.last_status==="error").map(r=>this._key(r)));
+    this._userChangedSelection=false;
   }
-  _countLabel(n){return n===1?"sprzątanie":(n%10>=2&&n%10<=4&&(n%100<12||n%100>14))?"sprzątania":"sprzątań";}
-  _map(){return this._maps().find(m=>String(m.map_id)===this._mapId)||this._maps()[0];}
-  _rooms(){
-    const map=this._map();if(!map)return [];
-    const records=new Map(this._history().filter(r=>String(r.map_id)===String(map.map_id)).map(r=>[String(r.room_id),r]));
-    return (map.rooms||[]).map(room=>({ ...room, map_id:map.map_id, map_name:map.name,
-      record:records.get(String(room.id))||null }));
+  _countLabel(n){return n===1?"skuteczne sprzątanie":(n%10>=2&&n%10<=4&&(n%100<12||n%100>14))?"skuteczne sprzątania":"skutecznych sprzątań";}
+  _roomsByMap(){
+    const history=this._history();
+    const maps=this._maps();
+    return maps.map(map=>{
+      const records=new Map(history.filter(r=>String(r.map_id)===String(map.map_id)).map(r=>[String(r.room_id),r]));
+      const rooms=(map.rooms||[]).map(room=>({
+        ...room,map_id:map.map_id,map_name:map.name,
+        record:records.get(String(room.id))||null
+      })).filter(room=>room.record);
+      return {map,rooms};
+    }).filter(group=>group.rooms.length);
+  }
+  _selectedMapIds(){
+    return new Set([...this._selected].map(key=>key.split(":")[0]));
+  }
+  _updateControls(){
+    const summary=this.shadowRoot.querySelector("[data-summary]");
+    const start=this.shadowRoot.querySelector('[data-action="start"]');
+    const selectedCount=this._selected.size;
+    const mapIds=this._selectedMapIds();
+    if(summary)summary.textContent="Zaznaczono: "+selectedCount+(mapIds.size>1?" · wybierz jedno piętro do uruchomienia":"");
+    if(start)start.disabled=this._busy||selectedCount===0||mapIds.size!==1;
   }
   _render(){
     if(!this._config)return;
-    const map=this._map(),rooms=this._rooms(),selected=[...this._selected];
+    const groups=this._roomsByMap();
+    const selectedMapIds=this._selectedMapIds();
     const failures=this._history().filter(r=>r.last_status==="error").length;
     const settings=this._showSettings?'<form id="settings"><h3>Parametry sprzątania</h3><div class="grid">'+
       '<label>Tryb<select name="cleaning_mode"><option value="0">Odkurzanie</option><option value="1">Mopowanie</option><option value="2" selected>Odkurzanie i mopowanie</option></select></label>'+
@@ -65,12 +86,12 @@ class MarcoVacuumHistoryCard extends HTMLElement {
         h2{font-size:1.15rem;font-weight:600;margin:0 0 8px}h3{font-size:1rem;margin:16px 0 8px}
         .muted,.meta{color:var(--secondary-text-color);font-size:.84rem}
         select,input{font:inherit;color:var(--primary-text-color);background:var(--card-background-color);border:1px solid var(--divider-color);border-radius:8px;padding:8px;min-height:40px;box-sizing:border-box}
-        .mapselect{width:100%;margin:12px 0}
-        .room{display:flex;align-items:center;gap:8px;padding:9px 2px;border-top:1px solid var(--divider-color)}
-        .room input{min-height:0;accent-color:var(--primary-color)}
-        .roomname{flex:1;min-width:0}.count{font-size:.82rem;color:var(--secondary-text-color);white-space:nowrap}
-        .status{font-size:.82rem;font-weight:600;margin-left:5px}.ok{color:var(--success-color)}.error{color:var(--error-color)}
-        .summary{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:10px 0}
+        .floor{font-size:.82rem;font-weight:700;color:var(--secondary-text-color);letter-spacing:.04em;margin:16px 0 4px}
+        .room{display:flex;align-items:center;gap:9px;padding:10px 2px;border-top:1px solid var(--divider-color);cursor:pointer}
+        .room input[type=checkbox]{appearance:auto;-webkit-appearance:checkbox;width:20px;height:20px;min-width:20px;min-height:20px;margin:0;padding:0;accent-color:var(--primary-color);cursor:pointer}
+        .roomname{flex:1;min-width:0}.count{font-size:.8rem;color:var(--secondary-text-color);white-space:nowrap}
+        .status{font-size:.8rem;font-weight:600;margin-left:4px;white-space:nowrap}.ok{color:var(--success-color)}.error{color:var(--error-color)}
+        .summary{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:12px 0}
         .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
         button{border:0;border-radius:8px;padding:10px 13px;font:inherit;cursor:pointer;background:var(--secondary-background-color);color:var(--primary-text-color)}
         button.primary{background:var(--primary-color);color:var(--text-primary-color,white)}
@@ -84,44 +105,48 @@ class MarcoVacuumHistoryCard extends HTMLElement {
       <ha-card>
         <h2>Dzisiejsza historia sprzątania</h2>
         <div class="muted">Odkurzacz: ${this._esc(this._config.vacuum_entity)}</div>
-        ${!this._sensor?'<div class="empty">Nie znaleziono danych Marco Vacuum.</div>':`
-          <select class="mapselect" id="map">${this._maps().map(m=>`<option value="${m.map_id}" ${String(m.map_id)===String(map?.map_id)?"selected":""}>${this._esc(m.name)}</option>`).join("")}</select>
-          ${rooms.length?rooms.map(r=>{
-            const checked=this._selected.has(this._key(r)),record=r.record;
-            const count=record?.successful_cleanings||0;
-            const status=record?.last_status;
-            return `<label class="room"><input type="checkbox" data-room="${this._esc(r.id)}" ${checked?"checked":""}>
-              <span class="roomname">${this._esc(r.name)}</span>
+        ${!this._sensor?'<div class="empty">Nie znaleziono danych Marco Vacuum.</div>':groups.length?groups.map(group=>`
+          <div class="floor">${this._esc(group.map.name)}</div>
+          ${group.rooms.map(room=>{
+            const key=this._key(room),checked=this._selected.has(key),record=room.record;
+            const count=Number(record.successful_cleanings||0);
+            const status=record.last_status;
+            return `<label class="room">
+              <input type="checkbox" data-room-key="${this._esc(key)}" ${checked?"checked":""}>
+              <span class="roomname">${this._esc(room.name)}</span>
               <span class="count">${count} ${this._countLabel(count)}</span>
-              ${status?'<span class="status '+(status==="error"?"error":"ok")+'">'+(status==="error"?"Błąd":"OK")+'</span>':""}
+              <span class="status ${status==="error"?"error":"ok"}">${status==="error"?"Błąd":"OK"}</span>
             </label>`;
-          }).join(""):'<div class="empty">Brak pomieszczeń na tej mapie.</div>'}
-          <div class="summary"><span class="muted">Zaznaczono: ${selected.length}</span><span class="muted">${failures?failures+" błędów dzisiaj":"Brak błędów dzisiaj"}</span></div>
+          }).join("")}
+        `).join(""):'<div class="empty">Dzisiaj nie odnotowano prób sprzątania żadnego pomieszczenia.</div>'}
+        ${this._sensor?`
+          <div class="summary"><span class="muted" data-summary>Zaznaczono: ${this._selected.size}${selectedMapIds.size>1?" · wybierz jedno piętro do uruchomienia":""}</span><span class="muted">${failures?failures+" błędów dzisiaj":"Brak błędów dzisiaj"}</span></div>
           <div class="actions">
-            <button class="primary" data-action="start" ${this._busy||!selected.length?"disabled":""}>Sprzątaj</button>
+            <button class="primary" data-action="start" ${this._busy||!this._selected.size||selectedMapIds.size!==1?"disabled":""}>Sprzątaj zaznaczone</button>
             <button data-action="refresh" ${this._busy?"disabled":""}>Odśwież historię</button>
           </div>
+          ${selectedMapIds.size>1?'<div class="note">Zaznaczone są pokoje z różnych pięter. Robot może wykonać jedno zadanie na aktualnie wybranej mapie — odznacz pokoje z pozostałych pięter i uruchom je osobno.</div>':""}
           ${settings}
-          <div class="note">Domyślnie zaznaczone są pomieszczenia, których ostatnia próba zakończyła się błędem. Parametry sprzątania nie są porównywane z wcześniejszymi zadaniami.</div>
+          <div class="note">Pokazujemy wyłącznie pomieszczenia, w których dzisiaj odnotowano próbę sprzątania. Licznik obejmuje tylko skuteczne sprzątania; status dotyczy ostatniej próby.</div>
           <div class="meta" role="status">${this._esc(this._status)}</div>
-        `}
+        `: ""}
       </ha-card>`;
+    this._updateControls();
   }
   _change(e){
-    if(e.target.id==="map"){this._mapId=e.target.value;this._selected=new Set(this._history().filter(r=>String(r.map_id)===this._mapId&&r.last_status==="error").map(r=>this._key(r)));this._render();}
-    if(e.target.matches("input[data-room]")){
-      const roomId=String(e.target.dataset.room),key=String(this._map()?.map_id)+":"+roomId;
-      if(e.target.checked)this._selected.add(key);else this._selected.delete(key);
-      this._render();
-    }
+    if(!e.target.matches('input[type="checkbox"][data-room-key]'))return;
+    const key=e.target.dataset.roomKey;
+    if(e.target.checked)this._selected.add(key);else this._selected.delete(key);
+    this._userChangedSelection=true;
+    this._updateControls();
   }
   async _click(e){
     const button=e.target.closest("button[data-action]");if(!button)return;
     const action=button.dataset.action;
     if(action==="cancel-settings"){this._showSettings=false;this._render();return;}
     if(action==="start"){
-      const map=this._map(),segments=[...this._selected].map(key=>{const [m,id]=key.split(":");return String(m)===String(map?.map_id)?Number(id):null;}).filter(Number.isFinite);
-      if(!map||!segments.length){this._status="Zaznacz pomieszczenia z jednej mapy.";this._statusError=true;this._render();return;}
+      const mapIds=this._selectedMapIds();
+      if(mapIds.size!==1){this._status="Wybierz pomieszczenia z jednego piętra.";this._render();return;}
       this._showSettings=true;this._status="";this._render();return;
     }
     if(action==="refresh"){
@@ -132,12 +157,17 @@ class MarcoVacuumHistoryCard extends HTMLElement {
     }
   }
   async _submit(e){
-    if(e.target.id!=="settings")return;e.preventDefault();
+    if(e.target.id!=="settings")return;
+    e.preventDefault();
     if(this._busy)return;
-    const map=this._map(),segments=[...this._selected].map(key=>{const [m,id]=key.split(":");return String(m)===String(map?.map_id)?Number(id):null;}).filter(Number.isFinite);
-    if(!map||!segments.length){this._status="Zaznacz pomieszczenia z jednej mapy.";this._render();return;}
+    const mapIds=this._selectedMapIds();
+    if(mapIds.size!==1){this._status="Wybierz pomieszczenia z jednego piętra.";this._render();return;}
+    const mapId=Number([...mapIds][0]);
+    const segments=[...this._selected].map(key=>{const [m,id]=key.split(":");return Number(m)===mapId?Number(id):null;}).filter(Number.isFinite);
+    const map=this._maps().find(item=>Number(item.map_id)===mapId);
+    if(!map||!segments.length){this._status="Nie wybrano prawidłowych pomieszczeń.";this._render();return;}
     const form=new FormData(e.target),payload={
-      vacuum_entity:this._config.vacuum_entity,map_id:Number(map.map_id),segments,
+      vacuum_entity:this._config.vacuum_entity,map_id:mapId,segments,
       cleaning_mode:Number(form.get("cleaning_mode")),suction_level:Number(form.get("suction_level")),
       wetness_level:Number(form.get("wetness_level")),cleaning_route:Number(form.get("cleaning_route")),
       repeats:Number(form.get("repeats"))
