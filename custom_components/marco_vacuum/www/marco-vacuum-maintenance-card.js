@@ -19,12 +19,23 @@ class MarcoVacuumMaintenanceCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     this._vacuum = hass.states[this._config?.vacuum_entity] || null;
-    const signature = JSON.stringify([
-      this._vacuum?.attributes,
-      Object.keys(hass.states).filter(id => id.startsWith("sensor.") || id.startsWith("button."))
-        .map(id => [id, hass.states[id]?.state]),
-      this._showConfirm, this._busy, this._error
+    const consumables = [
+      "main_brush_left","main_brush_time_left","side_brush_left","side_brush_time_left",
+      "filter_left","filter_time_left","sensor_dirty_left","sensor_dirty_time_left",
+      "tank_filter_left","tank_filter_time_left","mop_pad_left","mop_pad_time_left",
+      "silver_ion_left","silver_ion_time_left","detergent_left","detergent_time_left",
+      "squeegee_left","squeegee_time_left","onboard_dirty_water_tank_left","onboard_dirty_water_tank_time_left",
+      "dirty_water_channel_dirty_left","dirty_water_channel_dirty_time_left","deodorizer_left","deodorizer_time_left",
+      "wheel_dirty_left","wheel_dirty_time_left","scale_inhibitor_left","scale_inhibitor_time_left",
+      "fluffing_roller_dirty_left","fluffing_roller_dirty_time_left","roller_mop_filter_dirty_left",
+      "roller_mop_filter_dirty_time_left","water_outlet_filter_dirty_left","water_outlet_filter_dirty_time_left",
+      "washboard_cleaning_left","washboard_cleaning_time_left"
+    ];
+    const entityStates = consumables.flatMap(key => [
+      hass.states[`sensor.${this._vacuumObjectId()}_${key}`]?.state,
+      hass.states[`button.${this._vacuumObjectId()}_reset_${key.replace(/_left$/, "").replace(/_time$/, "")}`]?.state
     ]);
+    const signature = JSON.stringify([this._vacuum?.attributes, entityStates, this._showConfirm, this._busy, this._error]);
     if (signature !== this._signature) { this._signature = signature; this._render(); }
   }
   getCardSize() { return 8; }
