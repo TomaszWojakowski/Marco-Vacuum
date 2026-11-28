@@ -90,7 +90,7 @@ class MarcoVacuumHistoryCard extends HTMLElement {
         .room{display:flex;align-items:center;gap:9px;padding:10px 2px;border-top:1px solid var(--divider-color);cursor:pointer}
         .room input[type=checkbox]{appearance:auto;-webkit-appearance:checkbox;width:20px;height:20px;min-width:20px;min-height:20px;margin:0;padding:0;accent-color:var(--primary-color);cursor:pointer}
         .roomname{flex:1;min-width:0}.count{font-size:.8rem;color:var(--secondary-text-color);white-space:nowrap}
-        .status{font-size:.8rem;font-weight:600;margin-left:4px;white-space:nowrap}.ok{color:var(--success-color)}.error{color:var(--error-color)}
+        .status{font-size:.8rem;font-weight:600;margin-left:4px;white-space:nowrap}.ok{color:var(--success-color)}.error{color:var(--error-color)}.unknown{color:var(--secondary-text-color)}
         .summary{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:12px 0}
         .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
         button{border:0;border-radius:8px;padding:10px 13px;font:inherit;cursor:pointer;background:var(--secondary-background-color);color:var(--primary-text-color)}
@@ -115,7 +115,7 @@ class MarcoVacuumHistoryCard extends HTMLElement {
               <input type="checkbox" data-room-key="${this._esc(key)}" ${checked?"checked":""}>
               <span class="roomname">${this._esc(room.name)}</span>
               <span class="count">${count} ${this._countLabel(count)}</span>
-              <span class="status ${status==="error"?"error":"ok"}">${status==="error"?"Błąd":"OK"}</span>
+              <span class="status ${status==="error"?"error":status==="unknown"?"unknown":"ok"}">${status==="error"?"Błąd":status==="unknown"?"Brak wyniku":"OK"}</span>
             </label>`;
           }).join("")}
         `).join(""):'<div class="empty">Dzisiaj nie odnotowano prób sprzątania żadnego pomieszczenia.</div>'}
