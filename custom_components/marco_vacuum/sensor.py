@@ -44,7 +44,6 @@ class MarcoVacuumSensor(SensorEntity):
         self.hass = hass
         self._entry = entry
         self._runtime = runtime
-        # Keep the existing unique ID so the entity registry can retain its entity ID.
         vacuum_object_id = runtime["vacuum_entity"].split(".", 1)[1]
         self._attr_name = f"Marco Vacuum Data {vacuum_object_id.replace('_', ' ').title()}"
         self._attr_unique_id = f"{entry.data[CONF_VACUUM]}_groups"
@@ -63,5 +62,4 @@ class MarcoVacuumSensor(SensorEntity):
             "maps": _map_catalog(vacuum_state),
             "groups": self._runtime["groups"],
             "schedules": self._runtime.get("schedules", []),
-            "maintenance_history": self._runtime.get("maintenance_history", []),
         }
