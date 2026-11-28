@@ -52,7 +52,7 @@ class MarcoVacuumHistoryCard extends HTMLElement {
   _readRoomSettings(form){
     const result={};
     for(const input of form.querySelectorAll('input[name^="room_"],select[name^="room_"]')){
-      const m=input.name.match(/^room_(\\d+)_(cleaning_mode|suction_level|wetness_level|cleaning_route|repeats)$/);
+      const m=input.name.match(/^room_(\d+)_(cleaning_mode|suction_level|wetness_level|cleaning_route|repeats)$/);
       if(!m)continue;
       result[m[1]]=result[m[1]]||{};result[m[1]][m[2]]=Number(input.value);
     }
