@@ -167,30 +167,7 @@ async def _async_save_group(hass: HomeAssistant, call: ServiceCall) -> None:
     else:
         runtime["groups"][existing_index] = new_group
 
-    await runtime["store"].async_save({"groups": runtime["groups"], "maintenance_history": runtime.get("maintenance_history", [])})
-    sensor = runtime.get("sensor")
-    if sensor:
-        sensor.async_write_ha_state()
-
-
-async def _async_log_maintenance(hass: HomeAssistant, call: ServiceCall) -> None:
-    """Append a maintenance or replacement record to persistent storage."""
-    from homeassistant.util import dt as dt_util
-
-    runtime = _get_runtime(hass, call)
-    record = {
-        "id": str(uuid4()),
-        "date": dt_util.utcnow().isoformat(),
-        "item": call.data["item"],
-        "action": call.data["action"],
-        "note": call.data.get("note", "").strip(),
-    }
-    runtime["maintenance_history"].insert(0, record)
-    runtime["maintenance_history"] = runtime["maintenance_history"][:200]
-    await runtime["store"].async_save({
-        "groups": runtime["groups"],
-        "maintenance_history": runtime["maintenance_history"],
-    })
+    await runtime["store"].async_save({"groups": runtime["groups"]})
     sensor = runtime.get("sensor")
     if sensor:
         sensor.async_write_ha_state()
@@ -206,7 +183,7 @@ async def _async_delete_group(hass: HomeAssistant, call: ServiceCall) -> None:
     ]
     if len(runtime["groups"]) == before:
         raise HomeAssistantError(f"Nie znaleziono grupy {group_id}.")
-    await runtime["store"].async_save({"groups": runtime["groups"], "maintenance_history": runtime.get("maintenance_history", [])})
+    await runtime["store"].async_save({"groups": runtime["groups"]})
     sensor = runtime.get("sensor")
     if sensor:
         sensor.async_write_ha_state()
