@@ -35,7 +35,7 @@ class MarcoVacuumHistoryCard extends HTMLElement {
   _esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
   _maps(){return this._sensor?.attributes?.maps||[];}
   _history(){return this._sensor?.attributes?.daily_history||[];}
-  _key(r){return String(r.map_id)+":"+String(r.room_id);}
+  _key(r){return String(r.map_id)+":"+String(r.room_id??r.id);}
   _settingsFields(prefix,v={}) {
     const modes=[[0,"Zamiatanie"],[1,"Mopowanie"],[2,"Zamiatanie i mopowanie"]];
     return '<div class="grid settings-grid"><label class="field"><span>Tryb sprzątania</span><select name="'+prefix+'_cleaning_mode">'+modes.map(([n,l])=>'<option value="'+n+'" '+(Number(v.cleaning_mode??2)===n?"selected":"")+'>'+l+'</option>').join("")+'</select></label><label class="field"><span>Siła ssania</span><select name="'+prefix+'_suction_level">'+["Quiet","Standard","Strong","Turbo"].map((l,i)=>'<option value="'+i+'" '+(Number(v.suction_level??1)===i?"selected":"")+'>'+l+'</option>').join("")+'</select></label><label class="field"><span>Trasa sprzątania</span><select name="'+prefix+'_cleaning_route">'+[[1,"Standard"],[2,"Intensywna"],[3,"Głęboka"],[4,"Szybka"]].map(([n,l])=>'<option value="'+n+'" '+(Number(v.cleaning_route??1)===n?"selected":"")+'>'+l+'</option>').join("")+'</select></label><label class="field"><span>Wilgotność mopa (1–32)</span><input type="number" min="1" max="32" name="'+prefix+'_wetness_level" value="'+Number(v.wetness_level??16)+'"></label><label class="field"><span>Powtórzenia</span><select name="'+prefix+'_repeats">'+[1,2,3].map(n=>'<option value="'+n+'" '+(Number(v.repeats??1)===n?"selected":"")+'>'+n+'</option>').join("")+'</select></label></div>';
