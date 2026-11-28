@@ -50,3 +50,16 @@ vacuum_entity: vacuum.marco
 ```
 
 Wpisy historii dodaje się przyciskiem **Dodaj wpis**. Dostępna jest usługa `marco_vacuum.log_maintenance`.
+
+## Karta harmonogramów
+
+Karta pozwala tworzyć, edytować i usuwać harmonogramy dla wskazanej mapy i grupy pomieszczeń. Każdy harmonogram ma własne dni tygodnia, godzinę, liczbę przejazdów, moc ssania i poziom wody. Można też uruchomić go ręcznie.
+
+Dodaj kartę w edytorze YAML:
+
+```yaml
+type: custom:marco-vacuum-schedules-card
+vacuum_entity: vacuum.marco
+```
+
+Harmonogramy są przechowywane przez integrację w pamięci trwałej Home Assistant. Automatyczne uruchamianie odbywa się lokalnie w Home Assistant. W tej wersji parametry wspólne korzystają z usług Dreame `vacuum_select_map` i `vacuum_clean_segment`; integracja Dreame udostępnia w tej usłudze liczbę przejazdów, moc ssania i poziom wody. Wybór osobnego trybu sprzątania nie jest jeszcze dostępny w tej karcie.

@@ -74,3 +74,119 @@ log_maintenance:
       required: false
       selector:
         text:
+
+save_schedule:
+  name: Zapisz harmonogram
+  description: Tworzy lub aktualizuje harmonogram sprzątania.
+  fields:
+    vacuum_entity:
+      selector:
+        entity:
+          domain: vacuum
+    name:
+      required: true
+      selector:
+        text:
+    map_id:
+      required: true
+      selector:
+        number:
+          mode: box
+    segments:
+      required: true
+      selector:
+        object:
+    days:
+      required: true
+      selector:
+        object:
+    time:
+      required: true
+      selector:
+        text:
+    enabled:
+      required: true
+      selector:
+        boolean:
+    repeats:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 3
+    suction_level:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 3
+    water_volume:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 3
+    cleaning_type:
+      required: false
+      selector:
+        select:
+          options:
+            - custom
+            - cleangenius
+    cleangenius:
+      required: false
+      selector:
+        select:
+          options:
+            - routine_cleaning
+            - deep_cleaning
+    cleangenius_mode:
+      required: false
+      selector:
+        select:
+          options:
+            - vacuum_and_mop
+            - mop_after_vacuum
+    settings_mode:
+      required: false
+      selector:
+        select:
+          options:
+            - shared
+            - individual
+    shared_settings:
+      required: false
+      selector:
+        object:
+    room_settings:
+      required: false
+      selector:
+        object:
+    schedule_id:
+      required: false
+      selector:
+        text:
+
+delete_schedule:
+  name: Usuń harmonogram
+  fields:
+    vacuum_entity:
+      selector:
+        entity:
+          domain: vacuum
+    schedule_id:
+      required: true
+      selector:
+        text:
+
+run_schedule:
+  name: Uruchom harmonogram
+  fields:
+    vacuum_entity:
+      selector:
+        entity:
+          domain: vacuum
+    schedule_id:
+      required: true
+      selector:
+        text:
