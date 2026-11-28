@@ -182,18 +182,25 @@ async def async_refresh_daily_history(
                 cleaned |= _int_ids(getattr(nested, "cleaned_segments", None))
                 completed |= _int_ids(getattr(nested, "completed_segments", None))
 
-        # A positive per-room cleaning result wins over an obstacle marker or
-        # a partial skipped/pending fragment. Only rooms explicitly listed as
-        # skipped/pending, with no positive result, are errors.
+        # Prefer explicit per-room cleaning outcomes when Dreame provides
+        # them. Some X50 history records do not populate these lists at all;
+        # in that case blocked_segments is the only room-level evidence exposed
+        # by the history API, so retain those rooms in the daily list as a
+        # fallback rather than silently dropping the entire task.
         successful_ids = cleaned | completed
         failed_ids = (skipped | pending) - successful_ids
-        # active_segments is only the task selection, not proof of an outcome.
         attempted_ids = successful_ids | failed_ids
-        if blocked:
+        if not attempted_ids and blocked:
+            attempted_ids = set(blocked)
+            failed_ids = set(blocked)
             _LOGGER.debug(
-                "Historia %s: blocked segments %s (not treated as whole-room failures)",
+                "Historia %s: using blocked room IDs as fallback attempts: %s",
                 index, sorted(blocked),
             )
+        elif blocked:
+            # A blocked point alone must not override an explicit room success.
+            attempted_ids |= blocked
+            failed_ids |= blocked - successful_ids
 
         timestamp = getattr(item, "date", None)
         timestamp_text = dt_util.as_local(timestamp).isoformat(timespec="minutes") if isinstance(timestamp, datetime) and timestamp.tzinfo else timestamp.isoformat(timespec="minutes") if isinstance(timestamp, datetime) else None
