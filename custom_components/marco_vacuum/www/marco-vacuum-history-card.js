@@ -2,8 +2,9 @@ class MarcoVacuumHistoryCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({mode:"open"});
-    this._config=null;this._hass=null;this._sensor=null;
-    this._selected=new Set();this._selectionDate=null;this._showSettings=false;
+    this._config=null;this._hass=null;this._sensor=null;this._historySignature=null;
+    this._selected=new Set();this._showSettings=false;
+    this._settingsDraft={cleaning_type:"cleangenius",cleangenius:"routine_cleaning",cleangenius_mode:"mop_after_vacuum",settings_mode:"shared",shared_settings:{}};
     this._busy=false;this._status="";
     this.shadowRoot.addEventListener("click",e=>this._click(e));
     this.shadowRoot.addEventListener("change",e=>this._change(e));
@@ -22,15 +23,12 @@ class MarcoVacuumHistoryCard extends HTMLElement {
       Array.isArray(s.attributes?.maps) && Array.isArray(s.attributes?.daily_history)
     );
     if(!sensor)return;
-    const date=sensor.attributes.daily_history_date||"";
     this._sensor=sensor;
-    // Initialize defaults only once per day. Updates to sensor attributes must
-    // never replace a selection the user has already made in the card.
-    if(date!==this._selectionDate){
-      this._selectionDate=date;
-      this._selectFailedRooms();
+    const signature=JSON.stringify([sensor.attributes.daily_history_date,sensor.attributes.daily_history,sensor.attributes.maps]);
+    if(signature!==this._historySignature){
+      this._historySignature=signature;
+      this._render();
     }
-    this._render();
   }
   getCardSize(){return 8;}
   static getStubConfig(){return {vacuum_entity:"vacuum.marco"};}
@@ -38,10 +36,6 @@ class MarcoVacuumHistoryCard extends HTMLElement {
   _maps(){return this._sensor?.attributes?.maps||[];}
   _history(){return this._sensor?.attributes?.daily_history||[];}
   _key(r){return String(r.map_id)+":"+String(r.room_id);}
-  _selectFailedRooms(){
-    this._selected=new Set(this._history().filter(r=>r.last_status==="error").map(r=>this._key(r)));
-    this._userChangedSelection=false;
-  }
   _settingsFields(prefix,v={}) {
     const modes=[[0,"Zamiatanie"],[1,"Mopowanie"],[2,"Zamiatanie i mopowanie"]];
     return '<div class="grid settings-grid"><label class="field"><span>Tryb sprzątania</span><select name="'+prefix+'_cleaning_mode">'+modes.map(([n,l])=>'<option value="'+n+'" '+(Number(v.cleaning_mode??2)===n?"selected":"")+'>'+l+'</option>').join("")+'</select></label><label class="field"><span>Siła ssania</span><select name="'+prefix+'_suction_level">'+["Quiet","Standard","Strong","Turbo"].map((l,i)=>'<option value="'+i+'" '+(Number(v.suction_level??1)===i?"selected":"")+'>'+l+'</option>').join("")+'</select></label><label class="field"><span>Trasa sprzątania</span><select name="'+prefix+'_cleaning_route">'+[[1,"Standard"],[2,"Intensywna"],[3,"Głęboka"],[4,"Szybka"]].map(([n,l])=>'<option value="'+n+'" '+(Number(v.cleaning_route??1)===n?"selected":"")+'>'+l+'</option>').join("")+'</select></label><label class="field"><span>Wilgotność mopa (1–32)</span><input type="number" min="1" max="32" name="'+prefix+'_wetness_level" value="'+Number(v.wetness_level??16)+'"></label><label class="field"><span>Powtórzenia</span><select name="'+prefix+'_repeats">'+[1,2,3].map(n=>'<option value="'+n+'" '+(Number(v.repeats??1)===n?"selected":"")+'>'+n+'</option>').join("")+'</select></label></div>';
@@ -87,7 +81,7 @@ class MarcoVacuumHistoryCard extends HTMLElement {
     const groups=this._roomsByMap();
     const selectedMapIds=this._selectedMapIds();
     const failures=this._history().filter(r=>r.last_status==="error").length;
-    const draft=this._settingsDraft||{};
+    const draft=this._settingsDraft;
     const selectedRooms=[...this._selected].map(key=>{const [m,id]=key.split(":");return {map_id:Number(m),id:Number(id)};});
     const selectedMapId=selectedRooms[0]?.map_id;
     const selectedMap=this._maps().find(item=>Number(item.map_id)===Number(selectedMapId));
@@ -101,7 +95,7 @@ class MarcoVacuumHistoryCard extends HTMLElement {
         ((draft.settings_mode||"shared")==="shared"?this._settingsFields("shared",draft.shared_settings||{}):
           '<div class="muted">Rozwiń pokój, aby ustawić jego parametry.</div>'+selectedRooms.map(room=>'<details class="room-settings"><summary>'+this._esc(roomNames.get(String(room.id))||room.id)+'</summary>'+this._settingsFields("room_"+room.id,(draft.room_settings||{})[String(room.id)]||draft.shared_settings||{})+'</details>').join(""))
         )+
-      '<div class="actions"><button class="primary" type="submit" '+(this._busy?"disabled":"")+'>Uruchom sprzątanie</button><button type="button" data-action="cancel-settings">Anuluj</button></div></form>':'';
+      '<div class="note">Zmiany zostaną zastosowane przy następnym uruchomieniu sprzątania.</div><div class="actions"><button type="button" data-action="close-settings">Zamknij</button></div></form>':'';
     this.shadowRoot.innerHTML=`
       <style>
         :host{display:block;color:var(--primary-text-color)}ha-card{padding:16px}
@@ -144,8 +138,10 @@ class MarcoVacuumHistoryCard extends HTMLElement {
         ${this._sensor?`
           <div class="summary"><span class="muted" data-summary>Zaznaczono: ${this._selected.size}${selectedMapIds.size>1?" · wybierz jedno piętro do uruchomienia":""}</span><span class="muted">${failures?failures+" błędów dzisiaj":"Brak błędów dzisiaj"}</span></div>
           <div class="actions">
-            <button class="primary" data-action="start" ${this._busy||!this._selected.size||selectedMapIds.size!==1?"disabled":""}>Sprzątaj zaznaczone</button>
-            <button data-action="refresh" ${this._busy?"disabled":""}>Odśwież historię</button>
+            <button class="primary" data-action="start" ${this._busy||!this._selected.size||selectedMapIds.size!==1?"disabled":""}>Sprzątaj</button>
+            <button data-action="settings" ${this._busy?"disabled":""}>Parametry</button>
+            <button data-action="select-failed" ${this._busy||!failures?"disabled":""}>Zaznacz błędne</button>
+            <button data-action="refresh" ${this._busy?"disabled":""}>Odśwież</button>
           </div>
           ${selectedMapIds.size>1?'<div class="note">Zaznaczone są pokoje z różnych pięter. Robot może wykonać jedno zadanie na aktualnie wybranej mapie — odznacz pokoje z pozostałych pięter i uruchom je osobno.</div>':""}
           ${settings}
@@ -163,8 +159,10 @@ class MarcoVacuumHistoryCard extends HTMLElement {
       this._updateControls();
       return;
     }
-    if(e.target.name==="settings_mode"||e.target.name==="cleaning_type"){
-      const form=e.target.form,data=new FormData(form),current=this._settingsDraft||{};
+    if(e.target.closest("#settings")){
+      const form=e.target.form;
+      const changedMode=e.target.name==="settings_mode"||e.target.name==="cleaning_type";
+      const data=new FormData(form),current=this._settingsDraft;
       const roomSettings=this._readRoomSettings(form);
       const next={
         ...current,
@@ -179,18 +177,22 @@ class MarcoVacuumHistoryCard extends HTMLElement {
         for(const room of this._selected){const id=room.split(":")[1];next.room_settings[id]={...next.shared_settings};}
       }
       this._settingsDraft=next;
-      this._render();
+      if(changedMode)this._render();
     }
   }
   async _click(e){
     const button=e.target.closest("button[data-action]");if(!button)return;
     const action=button.dataset.action;
-    if(action==="cancel-settings"){this._showSettings=false;this._settingsDraft=null;this._render();return;}
-    if(action==="start"){
-      const mapIds=this._selectedMapIds();
-      if(mapIds.size!==1){this._status="Wybierz pomieszczenia z jednego piętra.";this._render();return;}
-      this._showSettings=true;this._settingsDraft=this._settingsDraft||{cleaning_type:"custom",settings_mode:"shared",shared_settings:{}};this._status="";this._render();return;
+    if(action==="settings"){
+      if(this._showSettings)this._captureSettings();
+      this._showSettings=!this._showSettings;this._render();return;
     }
+    if(action==="close-settings"){this._captureSettings();this._showSettings=false;this._render();return;}
+    if(action==="select-failed"){
+      for(const room of this._history())if(room.last_status==="error")this._selected.add(this._key(room));
+      this._syncCheckboxes();this._updateControls();return;
+    }
+    if(action==="start"){await this._startCleaning();return;}
     if(action==="refresh"){
       this._busy=true;this._status="Odświeżanie…";this._render();
       try{await this._hass.callService("marco_vacuum","refresh_daily_history",{vacuum_entity:this._config.vacuum_entity});this._status="Historia została odświeżona.";}
@@ -198,6 +200,54 @@ class MarcoVacuumHistoryCard extends HTMLElement {
       finally{this._busy=false;this._render();}
     }
   }
+  _syncCheckboxes(){
+    for(const input of this.shadowRoot.querySelectorAll('input[type="checkbox"][data-room-key]'))input.checked=this._selected.has(input.dataset.roomKey);
+  }
+  _captureSettings(){
+    const form=this.shadowRoot.querySelector("#settings");if(!form)return;
+    const data=new FormData(form),current=this._settingsDraft;
+    this._settingsDraft={
+      ...current,
+      cleaning_type:String(data.get("cleaning_type")||"cleangenius"),
+      settings_mode:String(data.get("settings_mode")||"shared"),
+      cleangenius:String(data.get("cleangenius")||current.cleangenius||"routine_cleaning"),
+      cleangenius_mode:String(data.get("cleangenius_mode")||current.cleangenius_mode||"mop_after_vacuum"),
+      shared_settings:form.querySelector('[name="shared_cleaning_mode"]')?this._readSettings(data,"shared"):(current.shared_settings||{}),
+      room_settings:{...(current.room_settings||{}),...this._readRoomSettings(form)}
+    };
+  }
+  async _startCleaning(){
+    if(this._busy)return;
+    this._captureSettings();
+    const mapIds=this._selectedMapIds();
+    if(!this._selected.size){this._status="Zaznacz pomieszczenia do sprzątania.";this._render();return;}
+    if(mapIds.size!==1){this._status="Wybierz pomieszczenia z jednego piętra.";this._render();return;}
+    const mapId=Number([...mapIds][0]);
+    const segments=[...this._selected].map(key=>{const [m,id]=key.split(":");return Number(m)===mapId?Number(id):null;}).filter(Number.isFinite);
+    const map=this._maps().find(item=>Number(item.map_id)===mapId);
+    if(!map||!segments.length){this._status="Nie wybrano prawidłowych pomieszczeń.";this._render();return;}
+    const draft=this._settingsDraft,cleaningType=draft.cleaning_type||"cleangenius";
+    const sharedSettings=draft.shared_settings||{},roomSettings={...(draft.room_settings||{})};
+    if(cleaningType==="custom"&&draft.settings_mode==="individual"){
+      for(const segment of segments)if(!roomSettings[String(segment)])roomSettings[String(segment)]={...sharedSettings};
+    }
+    const payload={
+      vacuum_entity:this._config.vacuum_entity,map_id:mapId,segments,
+      cleaning_type:cleaningType,
+      cleangenius:draft.cleangenius||"routine_cleaning",
+      cleangenius_mode:draft.cleangenius_mode||"mop_after_vacuum",
+      settings_mode:draft.settings_mode||"shared",
+      shared_settings:sharedSettings,room_settings:roomSettings
+    };
+    this._busy=true;this._status="Uruchamianie sprzątania…";this._render();
+    try{
+      await this._hass.callService("marco_vacuum","run_manual_cleaning",payload);
+      this._selected.clear();this._showSettings=false;
+      this._status="Wysłano polecenie sprzątania.";
+    }catch(err){this._status="Nie udało się uruchomić: "+(err.message||err);}
+    finally{this._busy=false;this._render();}
+  }
+  async _submit(e){if(e.target.id==="settings")e.preventDefault();}
   async _submit(e){
     if(e.target.id!=="settings")return;
     e.preventDefault();
