@@ -187,16 +187,20 @@ async def async_refresh_daily_history(
         skipped: set[int] = _int_ids(getattr(item, "skipped_segments", None))
         pending: set[int] = _int_ids(getattr(item, "pending_segments", None))
         completed: set[int] = _int_ids(getattr(item, "completed_segments", None))
+        selected_ids: set[int] = set()
         for outcome_map in outcome_maps:
             skipped |= _int_ids(getattr(outcome_map, "skipped_segments", None))
             pending |= _int_ids(getattr(outcome_map, "pending_segments", None))
             completed |= _int_ids(getattr(outcome_map, "completed_segments", None))
+            # Dreame's history-map decoder maps JSON "sa" to active_segments:
+            # the room IDs selected for this task, even without outcome lists.
+            selected_ids |= _int_ids(getattr(outcome_map, "active_segments", None))
 
         # blocked_segments describes obstacles within rooms, not room outcomes.
         # Never turn it into a failed cleaning attempt.
         successful_ids = completed
         failed_ids = (skipped | pending) - successful_ids
-        attempted_ids = successful_ids | failed_ids
+        attempted_ids = successful_ids | failed_ids | selected_ids
         if not attempted_ids:
             _LOGGER.warning(
                 "Historia Marco: brak wyników pokoi: entity=%s index=%s map=%s(%r) "
@@ -251,6 +255,11 @@ async def async_refresh_daily_history(
             if room_id in failed_ids:
                 record["last_status"] = "error"
                 record["last_error"] = "Pomieszczenie zablokowane lub pominięte"
+            elif room_id not in successful_ids:
+                # The room was selected for the task, but Dreame supplied no
+                # per-room outcome. Do not falsely label it OK or as an error.
+                record["last_status"] = "unknown"
+                record["last_error"] = None
             record["last_attempt"] = timestamp_text
 
     # Keep map and room order consistent with the currently configured map catalog.
