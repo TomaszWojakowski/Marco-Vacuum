@@ -9,8 +9,8 @@ class MarcoVacuumHistoryCard extends HTMLElement {
     this.shadowRoot.addEventListener("change",e=>this._change(e));
     this.shadowRoot.addEventListener("submit",e=>this._submit(e));
   }
-  connectedCallback(){if(this._sensor){this._selectFailedRooms();this._render();}}
-  disconnectedCallback(){this._selectionDate=null;}
+  connectedCallback(){if(this._config)this._render();}
+  disconnectedCallback(){}
   setConfig(config){
     if(!config?.vacuum_entity)throw new Error("Podaj vacuum_entity, np. vacuum.marco");
     this._config=config;this._render();
@@ -22,14 +22,12 @@ class MarcoVacuumHistoryCard extends HTMLElement {
       Array.isArray(s.attributes?.maps) && Array.isArray(s.attributes?.daily_history)
     );
     if(!sensor)return;
-    const oldSensor=this._sensor;
     const date=sensor.attributes.daily_history_date||"";
     this._sensor=sensor;
-    const historyChanged=!oldSensor || oldSensor.attributes.daily_history_updated!==sensor.attributes.daily_history_updated;
+    // Initialize defaults only once per day. Updates to sensor attributes must
+    // never replace a selection the user has already made in the card.
     if(date!==this._selectionDate){
       this._selectionDate=date;
-      this._selectFailedRooms();
-    } else if(historyChanged && !this._userChangedSelection){
       this._selectFailedRooms();
     }
     this._render();
