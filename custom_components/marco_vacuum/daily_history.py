@@ -127,6 +127,7 @@ async def async_refresh_daily_history(
             }
 
     summary: dict[tuple[int, int], dict[str, Any]] = {}
+    counted_successes: set[tuple[int, int, int | str]] = set()
     indexed_today = [
         (index, item) for index, item in enumerate(history, start=1)
         if _date_of(item) == today
@@ -210,7 +211,15 @@ async def async_refresh_daily_history(
                 "last_error": None,
             })
             if room_id in successful_ids:
-                record["successful_cleanings"] += 1
+                # Dreame can split one logical room-cleaning task into several
+                # history rows. multiple_cleaning_time links those rows.
+                task_key = getattr(item, "multiple_cleaning_time", None)
+                if task_key is None:
+                    task_key = timestamp_text or index
+                count_key = (int(map_id), room_id, task_key)
+                if count_key not in counted_successes:
+                    record["successful_cleanings"] += 1
+                    counted_successes.add(count_key)
                 record["last_status"] = "ok"
                 record["last_error"] = None
             if room_id in failed_ids:
