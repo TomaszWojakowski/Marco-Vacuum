@@ -9,6 +9,8 @@ class MarcoVacuumHistoryCard extends HTMLElement {
     this.shadowRoot.addEventListener("change",e=>this._change(e));
     this.shadowRoot.addEventListener("submit",e=>this._submit(e));
   }
+  connectedCallback(){if(this._sensor){this._selectFailedRooms();this._render();}}
+  disconnectedCallback(){this._selectionDate=null;}
   setConfig(config){
     if(!config?.vacuum_entity)throw new Error("Podaj vacuum_entity, np. vacuum.marco");
     this._config=config;this._render();
@@ -25,10 +27,7 @@ class MarcoVacuumHistoryCard extends HTMLElement {
     this._sensor=sensor;
     const maps=this._maps();
     if(!this._mapId&&maps.length)this._mapId=String(maps[0].map_id);
-    if(changed){
-      this._selectionDate=date;
-      this._selected=new Set(this._history().filter(r=>String(r.map_id)===String(this._mapId)&&r.last_status==="error").map(r=>this._key(r)));
-    }
+    if(changed)this._selectFailedRooms();
     this._render();
   }
   getCardSize(){return 6;}
@@ -37,6 +36,10 @@ class MarcoVacuumHistoryCard extends HTMLElement {
   _maps(){return this._sensor?.attributes?.maps||[];}
   _history(){return this._sensor?.attributes?.daily_history||[];}
   _key(r){return String(r.map_id)+":"+String(r.room_id);}
+  _selectFailedRooms(){
+    this._selectionDate=this._sensor?.attributes?.daily_history_date||"";
+    this._selected=new Set(this._history().filter(r=>String(r.map_id)===String(this._mapId)&&r.last_status==="error").map(r=>this._key(r)));
+  }
   _countLabel(n){return n===1?"sprzątanie":(n%10>=2&&n%10<=4&&(n%100<12||n%100>14))?"sprzątania":"sprzątań";}
   _map(){return this._maps().find(m=>String(m.map_id)===this._mapId)||this._maps()[0];}
   _rooms(){
