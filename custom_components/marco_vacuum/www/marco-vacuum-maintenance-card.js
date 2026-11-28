@@ -65,10 +65,16 @@ class MarcoVacuumMaintenanceCard extends HTMLElement {
   }
   _formatTime(entity) {
     if (!entity) return "";
-    const value = Number(entity.state);
+    let value = Number(entity.state);
     if (!Number.isFinite(value) || value < 0) return "";
-    const unit = entity.attributes?.unit_of_measurement || "";
-    return `Pozostało: ${value} ${unit}`.trim();
+    let unit = entity.attributes?.unit_of_measurement || "";
+    // HA may expose a duration in days; show hours for compact, familiar display.
+    if (unit === "d" || unit === "day" || unit === "days") {
+      value *= 24;
+      unit = "h";
+    }
+    const formatted = Number.isInteger(value) ? String(value) : String(Number(value.toFixed(1)));
+    return `(${formatted}${unit})`;
   }
   _wearRow(label, key, icon, resetKey, timeKey) {
     const entity = this._sensorState(key);
@@ -83,9 +89,8 @@ class MarcoVacuumMaintenanceCard extends HTMLElement {
     return `<div class="wear-row">
       <ha-icon icon="${icon}"></ha-icon>
       <div class="wear-main">
-        <div class="wear-label"><span>${label}</span><b>${value === null ? this._esc(entity.state) : value + "%"}</b></div>
+        <div class="wear-label"><span>${label}</span><span class="wear-value">${timeText ? `<small>${this._esc(timeText)}</small> ` : ""}<b>${value === null ? this._esc(entity.state) : value + "%"}</b></span></div>
         ${bar}
-        ${timeText ? `<div class="time-left">${this._esc(timeText)}</div>` : ""}
       </div>
       <span class="pill ${tone}">${state}</span>
       ${resetEntity ? `<button class="reset" data-action="reset" data-entity="${resetEntity}" data-label="${this._esc(label)}" title="Zresetuj licznik ${this._esc(label)}" aria-label="Zresetuj licznik ${this._esc(label)}"><ha-icon icon="mdi:refresh"></ha-icon></button>` : '<span class="reset-placeholder"></span>'}
@@ -137,10 +142,9 @@ class MarcoVacuumMaintenanceCard extends HTMLElement {
         .wear-row{display:grid;grid-template-columns:26px minmax(0,1fr) auto 34px;align-items:center;gap:10px;margin:14px 0}
         ha-icon{color:var(--secondary-text-color);--mdc-icon-size:21px}
         .wear-main{min-width:0}.wear-label{display:flex;justify-content:space-between;gap:8px;font-size:.9rem;margin-bottom:7px}
-        .wear-label b{font-variant-numeric:tabular-nums}
+        .wear-value{white-space:nowrap;font-variant-numeric:tabular-nums}.wear-value small{font-size:.75rem;font-weight:400;color:var(--secondary-text-color)}.wear-value b{font-weight:700}
         .track{height:7px;border-radius:8px;background:var(--divider-color);overflow:hidden}
         .fill{height:100%;border-radius:8px}.fill.good{background:var(--success-color)}.fill.warn{background:var(--warning-color)}.fill.bad{background:var(--error-color)}
-        .time-left{font-size:.75rem;color:var(--secondary-text-color);margin-top:5px}
         .pill{font-size:.75rem;border-radius:20px;padding:5px 8px;white-space:nowrap}
         .pill.good{background:color-mix(in srgb,var(--success-color) 16%,transparent);color:var(--success-color)}
         .pill.warn{background:color-mix(in srgb,var(--warning-color) 16%,transparent);color:var(--warning-color)}
