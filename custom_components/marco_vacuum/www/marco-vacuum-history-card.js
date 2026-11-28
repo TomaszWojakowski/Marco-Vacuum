@@ -27,7 +27,7 @@ class MarcoVacuumHistoryCard extends HTMLElement {
     if(!this._mapId&&maps.length)this._mapId=String(maps[0].map_id);
     if(changed){
       this._selectionDate=date;
-      this._selected=new Set(this._history().filter(r=>r.last_status==="error").map(r=>this._key(r)));
+      this._selected=new Set(this._history().filter(r=>String(r.map_id)===String(this._mapId)&&r.last_status==="error").map(r=>this._key(r)));
     }
     this._render();
   }
