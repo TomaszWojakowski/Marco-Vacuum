@@ -164,3 +164,81 @@ run_schedule:
       required: true
       selector:
         text:
+
+refresh_daily_history:
+  name: Odśwież dzienną historię sprzątania
+  description: Ponownie odczytuje dzisiejszą historię pomieszczeń z integracji Dreame.
+  fields:
+    vacuum_entity:
+      name: Odkurzacz
+      required: false
+      selector:
+        entity:
+          domain: vacuum
+
+run_manual_cleaning:
+  name: Uruchom ręczne sprzątanie pomieszczeń
+  description: Uruchamia zaznaczone pomieszczenia z wybranymi wspólnymi parametrami.
+  fields:
+    vacuum_entity:
+      name: Odkurzacz
+      required: false
+      selector:
+        entity:
+          domain: vacuum
+    map_id:
+      name: ID mapy
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    segments:
+      name: ID pomieszczeń
+      required: true
+      selector:
+        object:
+    cleaning_mode:
+      name: Tryb sprzątania
+      required: false
+      selector:
+        select:
+          options:
+            - label: Odkurzanie
+              value: 0
+            - label: Mopowanie
+              value: 1
+            - label: Odkurzanie i mopowanie
+              value: 2
+    suction_level:
+      name: Siła ssania
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 3
+          mode: box
+    wetness_level:
+      name: Wilgotność mopa
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 32
+          mode: box
+    cleaning_route:
+      name: Trasa sprzątania
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 4
+          mode: box
+    repeats:
+      name: Powtórzenia
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 3
+          mode: box
