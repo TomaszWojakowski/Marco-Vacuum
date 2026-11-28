@@ -162,22 +162,30 @@ async def async_refresh_daily_history(
         if map_data is not None:
             blocked |= _segment_ids(getattr(map_data, "blocked_segments", None))
         skipped = _int_ids(getattr(map_data, "skipped_segments", None)) if map_data is not None else set()
-        failed_ids = blocked | skipped
+        pending = _int_ids(getattr(map_data, "pending_segments", None)) if map_data is not None else set()
+        failed_ids = blocked | skipped | pending
 
         cleaned = set()
+        completed = set()
+        attempted = set()
         if map_data is not None:
             cleaned = _int_ids(getattr(map_data, "cleaned_segments", None))
+            completed = _int_ids(getattr(map_data, "completed_segments", None))
+            attempted = _int_ids(getattr(map_data, "active_segments", None))
             nested = getattr(map_data, "cleaning_map_data", None)
-            if not cleaned and nested is not None:
-                cleaned = _int_ids(getattr(nested, "cleaned_segments", None))
-        # A room blocked in this task is not counted as a successful cleaning,
-        # even if the map also reports a partial cleaned area for that segment.
-        successful_ids = cleaned - failed_ids
+            if nested is not None:
+                cleaned |= _int_ids(getattr(nested, "cleaned_segments", None))
+                completed |= _int_ids(getattr(nested, "completed_segments", None))
+                attempted |= _int_ids(getattr(nested, "active_segments", None))
+        # Map data exposes the segments that were cleaned/completed and those
+        # skipped or still pending. Do not infer success from task.completed.
+        successful_ids = (cleaned | completed) - failed_ids
+        attempted_ids = attempted | successful_ids | failed_ids
 
         timestamp = getattr(item, "date", None)
         timestamp_text = dt_util.as_local(timestamp).isoformat(timespec="minutes") if isinstance(timestamp, datetime) and timestamp.tzinfo else timestamp.isoformat(timespec="minutes") if isinstance(timestamp, datetime) else None
 
-        for room_id in successful_ids | failed_ids:
+        for room_id in attempted_ids:
             base = room_lookup.get((int(map_id), room_id))
             if base is None:
                 continue
