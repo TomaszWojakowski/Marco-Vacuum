@@ -62,4 +62,8 @@ class MarcoVacuumSensor(SensorEntity):
             "maps": _map_catalog(vacuum_state),
             "groups": self._runtime["groups"],
             "schedules": self._runtime.get("schedules", []),
+            "daily_history": self._runtime.get("daily_history", []),
+            "daily_history_date": self._runtime.get("daily_history_date"),
+            "daily_history_updated": self._runtime.get("daily_history_updated"),
+            "daily_history_error": self._runtime.get("daily_history_error"),
         }

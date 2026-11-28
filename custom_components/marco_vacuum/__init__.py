@@ -27,6 +27,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.storage import Store
 
 from .schedules import async_setup_entry as async_setup_schedules, register_services as register_schedule_services
+from .daily_history import async_setup_entry as async_setup_daily_history, register_services as register_daily_history_services
 
 from .const import (
     CONF_VACUUM,
@@ -51,6 +52,10 @@ _SCHEDULES_FILENAME = "marco-vacuum-schedules-card.js"
 _SCHEDULES_PATH = Path(__file__).parent / "www" / _SCHEDULES_FILENAME
 _SCHEDULES_URL_PATH = f"/{DOMAIN}/{_SCHEDULES_FILENAME}"
 _SCHEDULES_URL = f"{_SCHEDULES_URL_PATH}?v=0.2.7"
+_HISTORY_FILENAME = "marco-vacuum-history-card.js"
+_HISTORY_PATH = Path(__file__).parent / "www" / _HISTORY_FILENAME
+_HISTORY_URL_PATH = f"/{DOMAIN}/{_HISTORY_FILENAME}"
+_HISTORY_URL = f"{_HISTORY_URL_PATH}?v=0.1.2"
 
 
 def _map_catalog(vacuum_state) -> list[dict[str, Any]]:
@@ -192,6 +197,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up domain-level services once for all configured vacuums."""
     hass.data.setdefault(DOMAIN, {})
     register_schedule_services(hass)
+    register_daily_history_services(hass)
 
     # Serve the bundled card. In storage mode we register it as a Lovelace
     # resource, which makes HA await the module before rendering dashboard cards.
@@ -201,6 +207,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 StaticPathConfig(_CARD_URL_PATH, str(_CARD_PATH), cache_headers=False),
                 StaticPathConfig(_MAINTENANCE_URL_PATH, str(_MAINTENANCE_PATH), cache_headers=False),
                 StaticPathConfig(_SCHEDULES_URL_PATH, str(_SCHEDULES_PATH), cache_headers=False),
+                StaticPathConfig(_HISTORY_URL_PATH, str(_HISTORY_PATH), cache_headers=False),
             ])
         except RuntimeError:
             # The path may already be registered during an integration reload.
@@ -222,6 +229,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 add_extra_js_url(hass, _CARD_URL)
                 add_extra_js_url(hass, _MAINTENANCE_URL)
                 add_extra_js_url(hass, _SCHEDULES_URL)
+                add_extra_js_url(hass, _HISTORY_URL)
                 _LOGGER.warning(
                     "Marco Vacuum card loaded via extra_module_url because Lovelace "
                     "is in YAML mode. Storage mode is required for deterministic "
@@ -235,6 +243,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 (_CARD_URL, _CARD_URL_PATH),
                 (_MAINTENANCE_URL, _MAINTENANCE_URL_PATH),
                 (_SCHEDULES_URL, _SCHEDULES_URL_PATH),
+                (_HISTORY_URL, _HISTORY_URL_PATH),
             ):
                 existing = next(
                     (item for item in resources.async_items() if item.get("url", "").split("?", 1)[0] == resource_path),
@@ -323,6 +332,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
 
     await async_setup_schedules(hass, entry, runtime)
+    await async_setup_daily_history(hass, entry, runtime)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     @callback
