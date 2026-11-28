@@ -163,7 +163,9 @@ class MarcoVacuumStatusCard extends HTMLElement {
   _status() {
     const a=this._a(), state=String(this._vacuum?.state||"").toLowerCase();
     if (!this._vacuum || ["unavailable","unknown"].includes(state)) return ["Niedostępny","muted","mdi:cloud-alert"];
-    if (a.has_error || (a.error && !["no error","none","0"].includes(String(a.error).toLowerCase())) || state==="error") return ["Błąd","error","mdi:alert-circle"];
+    // Dreame may expose a warning in `error` while `has_error` remains false.
+    // Only the explicit error flag (or HA error state) should mark the robot as failed.
+    if (a.has_error === true || state==="error") return ["Błąd","error","mdi:alert-circle"];
     if (a.paused || a.cleaning_paused || a.returning_paused || state==="paused") return ["Wstrzymany","warning","mdi:pause-circle"];
     if (a.returning || a.returning_to_empty || a.returning_to_wash || state==="returning") return ["Wraca do stacji","info","mdi:home-import-outline"];
     if (a.washing || a.drying) return ["Obsługa w stacji","info","mdi:robot-vacuum"];
