@@ -316,15 +316,12 @@ async def _run_manual(hass: HomeAssistant, call: ServiceCall) -> None:
     schedule = {
         "map_id": int(call.data["map_id"]),
         "segments": segments,
-        "cleaning_type": "custom",
-        "settings_mode": "shared",
-        "shared_settings": {
-            "cleaning_mode": int(call.data["cleaning_mode"]),
-            "suction_level": int(call.data["suction_level"]),
-            "wetness_level": int(call.data["wetness_level"]),
-            "cleaning_route": int(call.data["cleaning_route"]),
-            "repeats": int(call.data["repeats"]),
-        },
+        "cleaning_type": call.data["cleaning_type"],
+        "cleangenius": call.data["cleangenius"],
+        "cleangenius_mode": call.data["cleangenius_mode"],
+        "settings_mode": call.data["settings_mode"],
+        "shared_settings": dict(call.data["shared_settings"]),
+        "room_settings": dict(call.data["room_settings"]),
     }
     await async_run_schedule(hass, runtime, schedule)
 
@@ -353,11 +350,12 @@ def register_services(hass: HomeAssistant) -> None:
         schema=vol.Schema({
             vol.Required("map_id"): cv.positive_int,
             vol.Required("segments"): vol.All(cv.ensure_list, [cv.positive_int]),
-            vol.Optional("cleaning_mode", default=2): vol.All(vol.Coerce(int), vol.In([0, 1, 2])),
-            vol.Optional("suction_level", default=1): vol.All(vol.Coerce(int), vol.Range(min=0, max=3)),
-            vol.Optional("wetness_level", default=16): vol.All(vol.Coerce(int), vol.Range(min=1, max=32)),
-            vol.Optional("cleaning_route", default=1): vol.All(vol.Coerce(int), vol.In([1, 2, 3, 4])),
-            vol.Optional("repeats", default=1): vol.All(vol.Coerce(int), vol.Range(min=1, max=3)),
+            vol.Optional("cleaning_type", default="custom"): vol.In(["custom", "cleangenius"]),
+            vol.Optional("cleangenius", default="routine_cleaning"): vol.In(["off", "routine_cleaning", "deep_cleaning"]),
+            vol.Optional("cleangenius_mode", default="mop_after_vacuum"): vol.In(["vacuum_and_mop", "mop_after_vacuum"]),
+            vol.Optional("settings_mode", default="shared"): vol.In(["shared", "individual"]),
+            vol.Optional("shared_settings", default={}): dict,
+            vol.Optional("room_settings", default={}): dict,
             vol.Optional(CONF_VACUUM): cv.entity_id,
         }),
     )
