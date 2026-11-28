@@ -33,7 +33,6 @@ from .const import (
     DOMAIN,
     PLATFORMS,
     SERVICE_DELETE_GROUP,
-    SERVICE_LOG_MAINTENANCE,
     SERVICE_SAVE_GROUP,
     STORAGE_KEY,
     STORAGE_VERSION,
@@ -47,7 +46,7 @@ _CARD_URL = f"{_CARD_URL_PATH}?v=0.1.8"
 _MAINTENANCE_FILENAME = "marco-vacuum-maintenance-card.js"
 _MAINTENANCE_PATH = Path(__file__).parent / "www" / _MAINTENANCE_FILENAME
 _MAINTENANCE_URL_PATH = f"/{DOMAIN}/{_MAINTENANCE_FILENAME}"
-_MAINTENANCE_URL = f"{_MAINTENANCE_URL_PATH}?v=0.1.0"
+_MAINTENANCE_URL = f"{_MAINTENANCE_URL_PATH}?v=0.2.0"
 _SCHEDULES_FILENAME = "marco-vacuum-schedules-card.js"
 _SCHEDULES_PATH = Path(__file__).parent / "www" / _SCHEDULES_FILENAME
 _SCHEDULES_URL_PATH = f"/{DOMAIN}/{_SCHEDULES_FILENAME}"
@@ -281,9 +280,6 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     async def delete_group(call: ServiceCall) -> None:
         await _async_delete_group(hass, call)
 
-    async def log_maintenance(call: ServiceCall) -> None:
-        await _async_log_maintenance(hass, call)
-
     hass.services.async_register(
         DOMAIN,
         SERVICE_SAVE_GROUP,
@@ -293,17 +289,6 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             vol.Required("map_id"): cv.positive_int,
             vol.Required("segments"): vol.All(cv.ensure_list, [cv.positive_int]),
             vol.Optional("group_id"): cv.string,
-            vol.Optional(CONF_VACUUM): cv.entity_id,
-        }),
-    )
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_LOG_MAINTENANCE,
-        log_maintenance,
-        schema=vol.Schema({
-            vol.Required("item"): vol.All(cv.string, vol.Length(min=1, max=80)),
-            vol.Required("action"): vol.All(cv.string, vol.Length(min=1, max=80)),
-            vol.Optional("note", default=""): vol.All(cv.string, vol.Length(max=500)),
             vol.Optional(CONF_VACUUM): cv.entity_id,
         }),
     )
@@ -333,7 +318,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "vacuum_entity": vacuum_entity,
         "store": store,
         "groups": groups if isinstance(groups, list) else [],
-        "maintenance_history": stored.get("maintenance_history", []) if isinstance(stored, dict) and isinstance(stored.get("maintenance_history", []), list) else [],
         "sensor": None,
     }
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
