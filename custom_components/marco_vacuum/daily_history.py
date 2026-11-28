@@ -322,7 +322,8 @@ async def async_setup_entry(hass: HomeAssistant, entry, runtime: dict[str, Any])
 
     @callback
     def task_event(_event) -> None:
-        schedule_refresh()
+        if _event.data.get("entity_id") == runtime["vacuum_entity"]:
+            schedule_refresh()
 
     @callback
     def vacuum_state_changed(event) -> None:
