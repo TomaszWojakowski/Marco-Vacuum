@@ -151,12 +151,28 @@ async def async_refresh_daily_history(
                     getattr(nested, "saved_map_id", None) or getattr(nested, "map_id", None)
                     if nested is not None else None
                 )
+        history_map_name = getattr(item, "map_name", None)
         if map_id not in map_lookup:
-            map_name = getattr(item, "map_name", None)
-            match = next((m for m in catalog if m["name"] == map_name), None)
+            normalized_name = str(history_map_name or "").strip().casefold()
+            match = next(
+                (m for m in catalog if str(m["name"]).strip().casefold() == normalized_name),
+                None,
+            )
             map_id = match["map_id"] if match else None
         if map_id is None:
-            _LOGGER.debug("Pomijam wpis historii %s: nie udało się ustalić mapy (%s)", index, entity_id)
+            _LOGGER.warning(
+                "Historia Marco: nie można przypisać wpisu do mapy: entity=%s index=%s "
+                "item.map_name=%r item.map_id=%r decoded.map_id=%r decoded.saved_map_id=%r "
+                "catalog=%s object_name=%r",
+                entity_id,
+                index,
+                history_map_name,
+                getattr(item, "map_id", None),
+                getattr(map_data, "map_id", None) if map_data is not None else None,
+                getattr(map_data, "saved_map_id", None) if map_data is not None else None,
+                [(m["map_id"], m["name"], [r["id"] for r in m["rooms"]]) for m in catalog],
+                getattr(item, "object_name", None),
+            )
             continue
 
         # Read the decoded history-map fields BEFORE any renderer preparation.
@@ -182,15 +198,27 @@ async def async_refresh_daily_history(
         failed_ids = (skipped | pending) - successful_ids
         attempted_ids = successful_ids | failed_ids
         if not attempted_ids:
-            _LOGGER.debug(
-                "Historia %s (%s): brak jawnych wyników pokoi; "
-                "completed=%s skipped=%s pending=%s blocked=%s",
-                index,
+            _LOGGER.warning(
+                "Historia Marco: brak wyników pokoi: entity=%s index=%s map=%s(%r) "
+                "date=%r completed=%r skipped=%r pending=%r blocked=%r "
+                "map_data_type=%s history_map=%r decoded_segments=%r "
+                "cleaning_map_data_type=%s cleaning_completed=%r cleaning_skipped=%r cleaning_pending=%r",
                 entity_id,
-                sorted(completed),
-                sorted(skipped),
-                sorted(pending),
-                sorted(_segment_ids(getattr(item, "blocked_segments", None))),
+                index,
+                map_id,
+                history_map_name,
+                getattr(item, "date", None),
+                getattr(item, "completed_segments", None),
+                getattr(item, "skipped_segments", None),
+                getattr(item, "pending_segments", None),
+                getattr(item, "blocked_segments", None),
+                type(map_data).__name__ if map_data is not None else None,
+                getattr(map_data, "history_map", None) if map_data is not None else None,
+                getattr(map_data, "segments", None) if map_data is not None else None,
+                type(nested).__name__ if nested is not None else None,
+                getattr(nested, "completed_segments", None) if nested is not None else None,
+                getattr(nested, "skipped_segments", None) if nested is not None else None,
+                getattr(nested, "pending_segments", None) if nested is not None else None,
             )
 
         timestamp = getattr(item, "date", None)
