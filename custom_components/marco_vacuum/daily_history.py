@@ -232,6 +232,15 @@ async def _run_manual(hass: HomeAssistant, call: ServiceCall) -> None:
     if state is None or state.state in ("unavailable", "unknown"):
         raise HomeAssistantError(f"Odkurzacz {entity_id} jest niedostępny.")
     attrs = state.attributes
+    from . import _map_catalog
+    selected_map = next(
+        (item for item in _map_catalog(state) if int(item["map_id"]) == int(call.data["map_id"])),
+        None,
+    )
+    segments = [int(value) for value in call.data["segments"]]
+    valid_ids = {int(room["id"]) for room in selected_map["rooms"]} if selected_map else set()
+    if not segments or len(segments) != len(set(segments)) or not set(segments).issubset(valid_ids):
+        raise HomeAssistantError("Wybierz prawidłowe pomieszczenia z jednej dostępnej mapy.")
     if (
         attrs.get("running") or attrs.get("started") or attrs.get("segment_cleaning")
         or attrs.get("zone_cleaning") or state.state in ("cleaning", "room_cleaning", "paused")
@@ -240,7 +249,7 @@ async def _run_manual(hass: HomeAssistant, call: ServiceCall) -> None:
 
     schedule = {
         "map_id": int(call.data["map_id"]),
-        "segments": [int(value) for value in call.data["segments"]],
+        "segments": segments,
         "cleaning_type": "custom",
         "settings_mode": "shared",
         "shared_settings": {
