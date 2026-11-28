@@ -158,27 +158,41 @@ async def async_refresh_daily_history(
             _LOGGER.debug("Pomijam wpis historii %s: nie udało się ustalić mapy (%s)", index, entity_id)
             continue
 
+        # blocked_segments marks an obstacle/blocked point inside a room. It
+        # does NOT mean that the entire room was skipped: a room can still
+        # have been cleaned around that obstacle.
         blocked = _segment_ids(getattr(item, "blocked_segments", None))
         if map_data is not None:
             blocked |= _segment_ids(getattr(map_data, "blocked_segments", None))
-        skipped = _int_ids(getattr(map_data, "skipped_segments", None)) if map_data is not None else set()
-        pending = _int_ids(getattr(map_data, "pending_segments", None)) if map_data is not None else set()
-        failed_ids = blocked | skipped | pending
 
-        cleaned = set()
-        completed = set()
-        attempted = set()
+        skipped = _int_ids(getattr(item, "skipped_segments", None))
+        pending = _int_ids(getattr(item, "pending_segments", None))
+        cleaned = _int_ids(getattr(item, "cleaned_segments", None))
+        completed = _int_ids(getattr(item, "completed_segments", None))
         if map_data is not None:
-            cleaned = _int_ids(getattr(map_data, "cleaned_segments", None))
-            completed = _int_ids(getattr(map_data, "completed_segments", None))
+            skipped |= _int_ids(getattr(map_data, "skipped_segments", None))
+            pending |= _int_ids(getattr(map_data, "pending_segments", None))
+            cleaned |= _int_ids(getattr(map_data, "cleaned_segments", None))
+            completed |= _int_ids(getattr(map_data, "completed_segments", None))
             nested = getattr(map_data, "cleaning_map_data", None)
             if nested is not None:
+                skipped |= _int_ids(getattr(nested, "skipped_segments", None))
+                pending |= _int_ids(getattr(nested, "pending_segments", None))
                 cleaned |= _int_ids(getattr(nested, "cleaned_segments", None))
                 completed |= _int_ids(getattr(nested, "completed_segments", None))
-        # active_segments describes the task selection, not proof that a room
-        # was actually entered. Only count rooms with a per-room outcome.
-        successful_ids = (cleaned | completed) - failed_ids
+
+        # A positive per-room cleaning result wins over an obstacle marker or
+        # a partial skipped/pending fragment. Only rooms explicitly listed as
+        # skipped/pending, with no positive result, are errors.
+        successful_ids = cleaned | completed
+        failed_ids = (skipped | pending) - successful_ids
+        # active_segments is only the task selection, not proof of an outcome.
         attempted_ids = successful_ids | failed_ids
+        if blocked:
+            _LOGGER.debug(
+                "Historia %s: blocked segments %s (not treated as whole-room failures)",
+                index, sorted(blocked),
+            )
 
         timestamp = getattr(item, "date", None)
         timestamp_text = dt_util.as_local(timestamp).isoformat(timespec="minutes") if isinstance(timestamp, datetime) and timestamp.tzinfo else timestamp.isoformat(timespec="minutes") if isinstance(timestamp, datetime) else None
