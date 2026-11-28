@@ -37,6 +37,7 @@ class MarcoVacuumHistoryCard extends HTMLElement {
   _maps(){return this._sensor?.attributes?.maps||[];}
   _history(){return this._sensor?.attributes?.daily_history||[];}
   _key(r){return String(r.map_id)+":"+String(r.room_id);}
+  _countLabel(n){return n===1?"sprzątanie":(n%10>=2&&n%10<=4&&(n%100<12||n%100>14))?"sprzątania":"sprzątań";}
   _map(){return this._maps().find(m=>String(m.map_id)===this._mapId)||this._maps()[0];}
   _rooms(){
     const map=this._map();if(!map)return [];
@@ -88,7 +89,7 @@ class MarcoVacuumHistoryCard extends HTMLElement {
             const status=record?.last_status;
             return `<label class="room"><input type="checkbox" data-room="${this._esc(r.id)}" ${checked?"checked":""}>
               <span class="roomname">${this._esc(r.name)}</span>
-              <span class="count">${count} ${count===1?"sprzątanie":"sprzątań"}</span>
+              <span class="count">${count} ${this._countLabel(count)}</span>
               ${status?'<span class="status '+(status==="error"?"error":"ok")+'">'+(status==="error"?"Błąd":"OK")+'</span>':""}
             </label>`;
           }).join(""):'<div class="empty">Brak pomieszczeń na tej mapie.</div>'}
