@@ -100,8 +100,7 @@ class MarcoVacuumHistoryCard extends HTMLElement {
         '<label class="field"><span>Ustawienia pomieszczeń</span><select name="settings_mode"><option value="shared" '+((draft.settings_mode||"shared")==="shared"?"selected":"")+'>Wszystkie pomieszczenia tak samo</option><option value="individual" '+(draft.settings_mode==="individual"?"selected":"")+'>Indywidualnie dla każdego pomieszczenia</option></select></label>'+
         ((draft.settings_mode||"shared")==="shared"?this._settingsFields("shared",draft.shared_settings||{}):
           '<div class="muted">Rozwiń pokój, aby ustawić jego parametry.</div>'+selectedRooms.map(room=>'<details class="room-settings"><summary>'+this._esc(roomNames.get(String(room.id))||room.id)+'</summary>'+this._settingsFields("room_"+room.id,(draft.room_settings||{})[String(room.id)]||draft.shared_settings||{})+'</details>').join(""))
-        )
-      )+
+        )+
       '<div class="actions"><button class="primary" type="submit" '+(this._busy?"disabled":"")+'>Uruchom sprzątanie</button><button type="button" data-action="cancel-settings">Anuluj</button></div></form>':'';
     this.shadowRoot.innerHTML=`
       <style>
