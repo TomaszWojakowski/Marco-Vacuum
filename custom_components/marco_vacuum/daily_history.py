@@ -100,6 +100,14 @@ def _segment_ids(value: Any) -> set[int]:
     return result
 
 
+def _blocked_ids(*values: Any) -> set[int]:
+    """Return room IDs reported as blocked by the history item or decoded map."""
+    result: set[int] = set()
+    for value in values:
+        result |= _segment_ids(value)
+    return result
+
+
 async def async_refresh_daily_history(
     hass: HomeAssistant, runtime: dict[str, Any]
 ) -> list[dict[str, Any]]:
@@ -127,13 +135,13 @@ async def async_refresh_daily_history(
             }
 
     summary: dict[tuple[int, int], dict[str, Any]] = {}
-    counted_successes: set[tuple[int, int, int | str]] = set()
+    tasks: dict[tuple[int, str], dict[str, Any]] = {}
     indexed_today = [
         (index, item) for index, item in enumerate(history, start=1)
         if _date_of(item) == today
     ]
 
-    # Process chronologically so the last observed result becomes the current status.
+    # History is newest-first. Reverse it so task groups are created chronologically.
     indexed_today.reverse()
     for index, item in indexed_today:
         try:
@@ -175,67 +183,67 @@ async def async_refresh_daily_history(
             )
             continue
 
-        # Read the decoded history-map fields BEFORE any renderer preparation.
-        # Upstream get_map_for_render() copies history maps and deliberately
-        # clears completed_segments/skipped_segments for history_map=True.
-        # Therefore rendered maps are not a valid source for room outcomes.
         outcome_maps = [map_data] if map_data is not None else []
         nested = getattr(map_data, "cleaning_map_data", None) if map_data is not None else None
         if nested is not None:
             outcome_maps.append(nested)
 
-        skipped: set[int] = _int_ids(getattr(item, "skipped_segments", None))
-        pending: set[int] = _int_ids(getattr(item, "pending_segments", None))
-        completed: set[int] = _int_ids(getattr(item, "completed_segments", None))
         selected_ids: set[int] = set()
+        blocked_values = [
+            getattr(item, "blocked_segments", None),
+            getattr(item, "blocked_rooms", None),
+        ]
         for outcome_map in outcome_maps:
-            skipped |= _int_ids(getattr(outcome_map, "skipped_segments", None))
-            pending |= _int_ids(getattr(outcome_map, "pending_segments", None))
-            completed |= _int_ids(getattr(outcome_map, "completed_segments", None))
-            # Dreame's history-map decoder maps JSON "sa" to active_segments:
-            # the room IDs selected for this task, even without outcome lists.
             selected_ids |= _int_ids(getattr(outcome_map, "active_segments", None))
-
-        # blocked_segments describes obstacles within rooms, not room outcomes.
-        # Never turn it into a failed cleaning attempt.
-        successful_ids = completed
-        failed_ids = (skipped | pending) - successful_ids
-        attempted_ids = successful_ids | failed_ids | selected_ids
-        if not attempted_ids:
-            _LOGGER.warning(
-                "Historia Marco: brak wyników pokoi: entity=%s index=%s map=%s(%r) "
-                "date=%r completed=%r skipped=%r pending=%r blocked=%r "
-                "map_data_type=%s history_map=%r decoded_segments=%r active_segments=%r cleaned_segments=%r "
-                "cleaning_map_data_type=%s cleaning_active_segments=%r cleaning_completed=%r cleaning_skipped=%r cleaning_pending=%r",
-                entity_id,
-                index,
-                map_id,
-                history_map_name,
-                getattr(item, "date", None),
-                getattr(item, "completed_segments", None),
-                getattr(item, "skipped_segments", None),
-                getattr(item, "pending_segments", None),
-                getattr(item, "blocked_segments", None),
-                type(map_data).__name__ if map_data is not None else None,
-                getattr(map_data, "history_map", None) if map_data is not None else None,
-                getattr(map_data, "segments", None) if map_data is not None else None,
-                getattr(map_data, "active_segments", None) if map_data is not None else None,
-                getattr(map_data, "cleaned_segments", None) if map_data is not None else None,
-                type(nested).__name__ if nested is not None else None,
-                getattr(nested, "active_segments", None) if nested is not None else None,
-                getattr(nested, "completed_segments", None) if nested is not None else None,
-                getattr(nested, "skipped_segments", None) if nested is not None else None,
-                getattr(nested, "pending_segments", None) if nested is not None else None,
-            )
+            blocked_values.extend([
+                getattr(outcome_map, "blocked_segments", None),
+                getattr(outcome_map, "blocked_rooms", None),
+            ])
+        blocked_ids = _blocked_ids(*blocked_values)
 
         timestamp = getattr(item, "date", None)
-        timestamp_text = dt_util.as_local(timestamp).isoformat(timespec="minutes") if isinstance(timestamp, datetime) and timestamp.tzinfo else timestamp.isoformat(timespec="minutes") if isinstance(timestamp, datetime) else None
+        timestamp_text = (
+            dt_util.as_local(timestamp).isoformat(timespec="minutes")
+            if isinstance(timestamp, datetime) and timestamp.tzinfo
+            else timestamp.isoformat(timespec="minutes")
+            if isinstance(timestamp, datetime)
+            else None
+        )
+        logical_task = getattr(item, "multiple_cleaning_time", None)
+        if logical_task is None:
+            logical_task = timestamp_text or str(index)
+        task_key = (int(map_id), str(logical_task))
+        task = tasks.setdefault(task_key, {
+            "map_id": int(map_id),
+            "selected_ids": set(),
+            "blocked_ids": set(),
+            "completed": False,
+            "last_timestamp": None,
+            "last_timestamp_text": None,
+        })
+        task["selected_ids"] |= selected_ids
+        task["blocked_ids"] |= blocked_ids
+        task["completed"] = task["completed"] or bool(getattr(item, "completed", False))
+        if isinstance(timestamp, datetime):
+            previous = task["last_timestamp"]
+            current_order = timestamp.timestamp()
+            previous_order = previous.timestamp() if isinstance(previous, datetime) else float("-inf")
+            if current_order >= previous_order:
+                task["last_timestamp"] = timestamp
+                task["last_timestamp_text"] = timestamp_text
 
+    # Resolve each logical cleaning once, after merging all its history rows.
+    # A blocked room fails the whole logical attempt; otherwise a selected room
+    # succeeds only when the task itself is reported completed.
+    for task in tasks.values():
+        map_id = task["map_id"]
+        attempted_ids = task["selected_ids"] | task["blocked_ids"]
+        timestamp_text = task["last_timestamp_text"]
         for room_id in attempted_ids:
-            base = room_lookup.get((int(map_id), room_id))
+            base = room_lookup.get((map_id, room_id))
             if base is None:
                 continue
-            key = (int(map_id), room_id)
+            key = (map_id, room_id)
             record = summary.setdefault(key, {
                 **base,
                 "successful_cleanings": 0,
@@ -243,24 +251,14 @@ async def async_refresh_daily_history(
                 "last_attempt": None,
                 "last_error": None,
             })
-            if room_id in successful_ids:
-                # Dreame can split one logical room-cleaning task into several
-                # history rows. multiple_cleaning_time links those rows.
-                task_key = getattr(item, "multiple_cleaning_time", None)
-                if task_key is None:
-                    task_key = timestamp_text or index
-                count_key = (int(map_id), room_id, task_key)
-                if count_key not in counted_successes:
-                    record["successful_cleanings"] += 1
-                    counted_successes.add(count_key)
+            if room_id in task["blocked_ids"]:
+                record["last_status"] = "error"
+                record["last_error"] = "Pomieszczenie zablokowane"
+            elif task["completed"]:
+                record["successful_cleanings"] += 1
                 record["last_status"] = "ok"
                 record["last_error"] = None
-            if room_id in failed_ids:
-                record["last_status"] = "error"
-                record["last_error"] = "Pomieszczenie zablokowane lub pominięte"
-            elif room_id not in successful_ids:
-                # The room was selected for the task, but Dreame supplied no
-                # per-room outcome. Do not falsely label it OK or as an error.
+            else:
                 record["last_status"] = "unknown"
                 record["last_error"] = None
             record["last_attempt"] = timestamp_text
