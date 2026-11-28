@@ -10,7 +10,6 @@ STORAGE_KEY = "marco_vacuum"
 
 SERVICE_SAVE_GROUP = "save_group"
 SERVICE_DELETE_GROUP = "delete_group"
-SERVICE_LOG_MAINTENANCE = "log_maintenance"
 
 ATTR_GROUPS = "groups"
 ATTR_MAPS = "maps"
