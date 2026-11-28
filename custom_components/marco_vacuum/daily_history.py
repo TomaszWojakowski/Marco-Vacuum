@@ -205,8 +205,8 @@ async def async_refresh_daily_history(
             _LOGGER.warning(
                 "Historia Marco: brak wyników pokoi: entity=%s index=%s map=%s(%r) "
                 "date=%r completed=%r skipped=%r pending=%r blocked=%r "
-                "map_data_type=%s history_map=%r decoded_segments=%r "
-                "cleaning_map_data_type=%s cleaning_completed=%r cleaning_skipped=%r cleaning_pending=%r",
+                "map_data_type=%s history_map=%r decoded_segments=%r active_segments=%r cleaned_segments=%r "
+                "cleaning_map_data_type=%s cleaning_active_segments=%r cleaning_completed=%r cleaning_skipped=%r cleaning_pending=%r",
                 entity_id,
                 index,
                 map_id,
@@ -219,7 +219,10 @@ async def async_refresh_daily_history(
                 type(map_data).__name__ if map_data is not None else None,
                 getattr(map_data, "history_map", None) if map_data is not None else None,
                 getattr(map_data, "segments", None) if map_data is not None else None,
+                getattr(map_data, "active_segments", None) if map_data is not None else None,
+                getattr(map_data, "cleaned_segments", None) if map_data is not None else None,
                 type(nested).__name__ if nested is not None else None,
+                getattr(nested, "active_segments", None) if nested is not None else None,
                 getattr(nested, "completed_segments", None) if nested is not None else None,
                 getattr(nested, "skipped_segments", None) if nested is not None else None,
                 getattr(nested, "pending_segments", None) if nested is not None else None,
