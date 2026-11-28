@@ -4,7 +4,7 @@ class MarcoVacuumHistoryCard extends HTMLElement {
     this.attachShadow({mode:"open"});
     this._config=null;this._hass=null;this._sensor=null;this._historySignature=null;
     this._selected=new Set();this._showSettings=false;
-    this._settingsDraft={cleaning_type:"cleangenius",cleangenius:"routine_cleaning",cleangenius_mode:"mop_after_vacuum",settings_mode:"shared",shared_settings:{}};
+    this._settingsDraft={cleaning_type:"cleangenius",cleangenius:"routine_cleaning",cleangenius_mode:"mop_after_vacuum",shared_settings:{}};
     this._busy=false;this._status="";
     this.shadowRoot.addEventListener("click",e=>this._click(e));
     this.shadowRoot.addEventListener("change",e=>this._change(e));
@@ -43,15 +43,6 @@ class MarcoVacuumHistoryCard extends HTMLElement {
   _readSettings(data,prefix){
     return {cleaning_mode:Number(data.get(prefix+"_cleaning_mode")??2),suction_level:Number(data.get(prefix+"_suction_level")??1),wetness_level:Number(data.get(prefix+"_wetness_level")??16),cleaning_route:Number(data.get(prefix+"_cleaning_route")??1),repeats:Number(data.get(prefix+"_repeats")??1)};
   }
-  _readRoomSettings(form){
-    const result={};
-    for(const input of form.querySelectorAll('input[name^="room_"],select[name^="room_"]')){
-      const m=input.name.match(/^room_(\d+)_(cleaning_mode|suction_level|wetness_level|cleaning_route|repeats)$/);
-      if(!m)continue;
-      result[m[1]]=result[m[1]]||{};result[m[1]][m[2]]=Number(input.value);
-    }
-    return result;
-  }
   _countLabel(n){return n===1?"skuteczne sprzątanie":(n%10>=2&&n%10<=4&&(n%100<12||n%100>14))?"skuteczne sprzątania":"skutecznych sprzątań";}
   _roomsByMap(){
     const history=this._history();
@@ -82,19 +73,11 @@ class MarcoVacuumHistoryCard extends HTMLElement {
     const selectedMapIds=this._selectedMapIds();
     const failures=this._history().filter(r=>r.last_status==="error").length;
     const draft=this._settingsDraft;
-    const selectedRooms=[...this._selected].map(key=>{const [m,id]=key.split(":");return {map_id:Number(m),id:Number(id)};});
-    const selectedMapId=selectedRooms[0]?.map_id;
-    const selectedMap=this._maps().find(item=>Number(item.map_id)===Number(selectedMapId));
-    const roomNames=new Map((selectedMap?.rooms||[]).map(room=>[String(room.id),room.name]));
     const settings=this._showSettings?'<form id="settings"><h3>Tryb sprzątania</h3>'+
       '<label class="field"><span>Wariant</span><select name="cleaning_type"><option value="custom" '+((draft.cleaning_type||"custom")==="custom"?"selected":"")+'>Niestandardowy</option><option value="cleangenius" '+(draft.cleaning_type==="cleangenius"?"selected":"")+'>CleanGenius</option></select></label>'+
       (draft.cleaning_type==="cleangenius"?
         '<div class="grid"><label class="field"><span>CleanGenius</span><select name="cleangenius">'+[["routine_cleaning","Routine cleaning"],["deep_cleaning","Deep cleaning"]].map(([v,l])=>'<option value="'+v+'" '+((draft.cleangenius||"routine_cleaning")===v?"selected":"")+'>'+l+'</option>').join("")+'</select></label><label class="field"><span>Sposób pracy</span><select name="cleangenius_mode">'+[["vacuum_and_mop","Odkurzanie i mopowanie"],["mop_after_vacuum","Mopowanie po odkurzaniu"]].map(([v,l])=>'<option value="'+v+'" '+((draft.cleangenius_mode||"mop_after_vacuum")===v?"selected":"")+'>'+l+'</option>').join("")+'</select></label></div>'
-      :
-        '<label class="field"><span>Ustawienia pomieszczeń</span><select name="settings_mode"><option value="shared" '+((draft.settings_mode||"shared")==="shared"?"selected":"")+'>Wszystkie pomieszczenia tak samo</option><option value="individual" '+(draft.settings_mode==="individual"?"selected":"")+'>Indywidualnie dla każdego pomieszczenia</option></select></label>'+
-        ((draft.settings_mode||"shared")==="shared"?this._settingsFields("shared",draft.shared_settings||{}):
-          '<div class="muted">Rozwiń pokój, aby ustawić jego parametry.</div>'+selectedRooms.map(room=>'<details class="room-settings"><summary>'+this._esc(roomNames.get(String(room.id))||room.id)+'</summary>'+this._settingsFields("room_"+room.id,(draft.room_settings||{})[String(room.id)]||draft.shared_settings||{})+'</details>').join(""))
-        )+
+      :this._settingsFields("shared",draft.shared_settings||{}))+
       '<div class="note">Zmiany zostaną zastosowane przy następnym uruchomieniu sprzątania.</div><div class="actions"><button type="button" data-action="close-settings">Zamknij</button></div></form>':'';
     this.shadowRoot.innerHTML=`
       <style>
@@ -155,28 +138,20 @@ class MarcoVacuumHistoryCard extends HTMLElement {
     if(e.target.matches('input[type="checkbox"][data-room-key]')){
       const key=e.target.dataset.roomKey;
       if(e.target.checked)this._selected.add(key);else this._selected.delete(key);
-      this._userChangedSelection=true;
-      this._updateControls();
+      this._render();
       return;
     }
     if(e.target.closest("#settings")){
       const form=e.target.form;
-      const changedMode=e.target.name==="settings_mode"||e.target.name==="cleaning_type";
+      const changedMode=e.target.name==="cleaning_type";
       const data=new FormData(form),current=this._settingsDraft;
-      const roomSettings=this._readRoomSettings(form);
-      const next={
+      this._settingsDraft={
         ...current,
-        cleaning_type:String(data.get("cleaning_type")||"custom"),
-        settings_mode:String(data.get("settings_mode")||"shared"),
+        cleaning_type:String(data.get("cleaning_type")||"cleangenius"),
         cleangenius:String(data.get("cleangenius")||current.cleangenius||"routine_cleaning"),
         cleangenius_mode:String(data.get("cleangenius_mode")||current.cleangenius_mode||"mop_after_vacuum"),
-        shared_settings:form.querySelector('[name="shared_cleaning_mode"]')?this._readSettings(data,"shared"):(current.shared_settings||{}),
-        room_settings:{...(current.room_settings||{}),...roomSettings}
+        shared_settings:form.querySelector('[name="shared_cleaning_mode"]')?this._readSettings(data,"shared"):(current.shared_settings||{})
       };
-      if(next.settings_mode==="individual"&&!Object.keys(next.room_settings).length){
-        for(const room of this._selected){const id=room.split(":")[1];next.room_settings[id]={...next.shared_settings};}
-      }
-      this._settingsDraft=next;
       if(changedMode)this._render();
     }
   }
@@ -190,7 +165,7 @@ class MarcoVacuumHistoryCard extends HTMLElement {
     if(action==="close-settings"){this._captureSettings();this._showSettings=false;this._render();return;}
     if(action==="select-failed"){
       for(const room of this._history())if(room.last_status==="error")this._selected.add(this._key(room));
-      this._syncCheckboxes();this._updateControls();return;
+      this._render();return;
     }
     if(action==="start"){await this._startCleaning();return;}
     if(action==="refresh"){
@@ -200,20 +175,15 @@ class MarcoVacuumHistoryCard extends HTMLElement {
       finally{this._busy=false;this._render();}
     }
   }
-  _syncCheckboxes(){
-    for(const input of this.shadowRoot.querySelectorAll('input[type="checkbox"][data-room-key]'))input.checked=this._selected.has(input.dataset.roomKey);
-  }
   _captureSettings(){
     const form=this.shadowRoot.querySelector("#settings");if(!form)return;
     const data=new FormData(form),current=this._settingsDraft;
     this._settingsDraft={
       ...current,
       cleaning_type:String(data.get("cleaning_type")||"cleangenius"),
-      settings_mode:String(data.get("settings_mode")||"shared"),
       cleangenius:String(data.get("cleangenius")||current.cleangenius||"routine_cleaning"),
       cleangenius_mode:String(data.get("cleangenius_mode")||current.cleangenius_mode||"mop_after_vacuum"),
-      shared_settings:form.querySelector('[name="shared_cleaning_mode"]')?this._readSettings(data,"shared"):(current.shared_settings||{}),
-      room_settings:{...(current.room_settings||{}),...this._readRoomSettings(form)}
+      shared_settings:form.querySelector('[name="shared_cleaning_mode"]')?this._readSettings(data,"shared"):(current.shared_settings||{})
     };
   }
   async _startCleaning(){
@@ -227,17 +197,14 @@ class MarcoVacuumHistoryCard extends HTMLElement {
     const map=this._maps().find(item=>Number(item.map_id)===mapId);
     if(!map||!segments.length){this._status="Nie wybrano prawidłowych pomieszczeń.";this._render();return;}
     const draft=this._settingsDraft,cleaningType=draft.cleaning_type||"cleangenius";
-    const sharedSettings=draft.shared_settings||{},roomSettings={...(draft.room_settings||{})};
-    if(cleaningType==="custom"&&draft.settings_mode==="individual"){
-      for(const segment of segments)if(!roomSettings[String(segment)])roomSettings[String(segment)]={...sharedSettings};
-    }
+    const sharedSettings=draft.shared_settings||{};
     const payload={
       vacuum_entity:this._config.vacuum_entity,map_id:mapId,segments,
       cleaning_type:cleaningType,
       cleangenius:draft.cleangenius||"routine_cleaning",
       cleangenius_mode:draft.cleangenius_mode||"mop_after_vacuum",
-      settings_mode:draft.settings_mode||"shared",
-      shared_settings:sharedSettings,room_settings:roomSettings
+      settings_mode:"shared",
+      shared_settings:sharedSettings
     };
     this._busy=true;this._status="Uruchamianie sprzątania…";this._render();
     try{
@@ -248,39 +215,6 @@ class MarcoVacuumHistoryCard extends HTMLElement {
     finally{this._busy=false;this._render();}
   }
   async _submit(e){if(e.target.id==="settings")e.preventDefault();}
-  async _submit(e){
-    if(e.target.id!=="settings")return;
-    e.preventDefault();
-    if(this._busy)return;
-    const mapIds=this._selectedMapIds();
-    if(mapIds.size!==1){this._status="Wybierz pomieszczenia z jednego piętra.";this._render();return;}
-    const mapId=Number([...mapIds][0]);
-    const segments=[...this._selected].map(key=>{const [m,id]=key.split(":");return Number(m)===mapId?Number(id):null;}).filter(Number.isFinite);
-    const map=this._maps().find(item=>Number(item.map_id)===mapId);
-    if(!map||!segments.length){this._status="Nie wybrano prawidłowych pomieszczeń.";this._render();return;}
-    const form=new FormData(e.target),draft=this._settingsDraft||{},cleaningType=String(form.get("cleaning_type")||"custom");
-    const sharedSettings=form.querySelector('[name="shared_cleaning_mode"]')?this._readSettings(form,"shared"):(draft.shared_settings||{});
-    const roomSettings={...(draft.room_settings||{}),...this._readRoomSettings(e.target)};
-    if(cleaningType==="custom"&&String(form.get("settings_mode")||"shared")==="individual"){
-      for(const segment of segments)if(!roomSettings[String(segment)])roomSettings[String(segment)]={...sharedSettings};
-    }
-    const payload={
-      vacuum_entity:this._config.vacuum_entity,map_id:mapId,segments,
-      cleaning_type:cleaningType,
-      cleangenius:String(form.get("cleangenius")||draft.cleangenius||"routine_cleaning"),
-      cleangenius_mode:String(form.get("cleangenius_mode")||draft.cleangenius_mode||"mop_after_vacuum"),
-      settings_mode:String(form.get("settings_mode")||draft.settings_mode||"shared"),
-      shared_settings:sharedSettings,
-      room_settings:roomSettings
-    };
-    this._busy=true;this._status="Uruchamianie sprzątania…";this._render();
-    try{
-      await this._hass.callService("marco_vacuum","run_manual_cleaning",payload);
-      this._status="Wysłano polecenie sprzątania.";
-      this._showSettings=false;
-    }catch(err){this._status="Nie udało się uruchomić: "+(err.message||err);}
-    finally{this._busy=false;this._render();}
-  }
 }
 if(!customElements.get("marco-vacuum-history-card"))customElements.define("marco-vacuum-history-card",MarcoVacuumHistoryCard);
 window.customCards=window.customCards||[];
