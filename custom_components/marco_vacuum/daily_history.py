@@ -171,16 +171,14 @@ async def async_refresh_daily_history(
         if map_data is not None:
             cleaned = _int_ids(getattr(map_data, "cleaned_segments", None))
             completed = _int_ids(getattr(map_data, "completed_segments", None))
-            attempted = _int_ids(getattr(map_data, "active_segments", None))
             nested = getattr(map_data, "cleaning_map_data", None)
             if nested is not None:
                 cleaned |= _int_ids(getattr(nested, "cleaned_segments", None))
                 completed |= _int_ids(getattr(nested, "completed_segments", None))
-                attempted |= _int_ids(getattr(nested, "active_segments", None))
-        # Map data exposes the segments that were cleaned/completed and those
-        # skipped or still pending. Do not infer success from task.completed.
+        # active_segments describes the task selection, not proof that a room
+        # was actually entered. Only count rooms with a per-room outcome.
         successful_ids = (cleaned | completed) - failed_ids
-        attempted_ids = attempted | successful_ids | failed_ids
+        attempted_ids = successful_ids | failed_ids
 
         timestamp = getattr(item, "date", None)
         timestamp_text = dt_util.as_local(timestamp).isoformat(timespec="minutes") if isinstance(timestamp, datetime) and timestamp.tzinfo else timestamp.isoformat(timespec="minutes") if isinstance(timestamp, datetime) else None
