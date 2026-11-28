@@ -94,6 +94,10 @@ class MarcoVacuumMaintenanceCard extends HTMLElement {
       this._wearRow("Filtr zbiornika","tank_filter_left","mdi:filter","tank_filter","tank_filter_time_left"),
       this._wearRow("Środek odkamieniający","scale_inhibitor_left","mdi:flask-outline","scale_inhibitor","scale_inhibitor_time_left"),
       this._wearRow("Ściągaczka","squeegee_left","mdi:water-remove","squeegee","squeegee_time_left"),
+      this._wearRow("Kółko","wheel_dirty_left","mdi:tire","wheel","wheel_dirty_time_left"),
+      this._wearRow("Wałek czyszczący","fluffing_roller_dirty_left","mdi:blinds-open","fluffing_roller","fluffing_roller_dirty_time_left"),
+      this._wearRow("Filtr mopa rolkowego","roller_mop_filter_dirty_left","mdi:filter-settings","roller_mop_filter","roller_mop_filter_dirty_time_left"),
+      this._wearRow("Filtr wylotu wody","water_outlet_filter_dirty_left","mdi:filter-settings","water_outlet_filter","water_outlet_filter_dirty_time_left"),
       this._wearRow("Czyszczenie stacji myjącej","washboard_cleaning_left","mdi:waterfall","washboard_cleaning","washboard_cleaning_time_left")
     ].join("");
     const dock = [
