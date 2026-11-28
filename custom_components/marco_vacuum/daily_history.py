@@ -211,7 +211,8 @@ async def async_refresh_daily_history(
         )
         logical_task = getattr(item, "multiple_cleaning_time", None)
         if logical_task is None:
-            logical_task = timestamp_text or str(index)
+            # Without Dreame's grouping key, keep this history row as its own task.
+            logical_task = f"history:{index}"
         task_key = (int(map_id), str(logical_task))
         task = tasks.setdefault(task_key, {
             "map_id": int(map_id),
