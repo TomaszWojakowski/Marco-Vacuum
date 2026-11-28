@@ -31,10 +31,15 @@ class MarcoVacuumMaintenanceCard extends HTMLElement {
       "roller_mop_filter_dirty_time_left","water_outlet_filter_dirty_left","water_outlet_filter_dirty_time_left",
       "washboard_cleaning_left","washboard_cleaning_time_left"
     ];
-    const entityStates = consumables.flatMap(key => [
-      hass.states[`sensor.${this._vacuumObjectId()}_${key}`]?.state,
-      hass.states[`button.${this._vacuumObjectId()}_reset_${key.replace(/_left$/, "").replace(/_time$/, "")}`]?.state
-    ]);
+    const resetKeys = [
+      "main_brush","side_brush","filter","sensor","tank_filter","mop_pad","silver_ion",
+      "detergent","squeegee","onboard_dirty_water_tank","dirty_water_channel","deodorizer",
+      "wheel","scale_inhibitor","fluffing_roller","roller_mop_filter","water_outlet_filter","washboard_cleaning"
+    ];
+    const entityStates = [
+      ...consumables.map(key => hass.states[`sensor.${this._vacuumObjectId()}_${key}`]?.state),
+      ...resetKeys.map(key => Boolean(hass.states[`button.${this._vacuumObjectId()}_reset_${key}`]))
+    ];
     const signature = JSON.stringify([this._vacuum?.attributes, entityStates, this._showConfirm, this._busy, this._error]);
     if (signature !== this._signature) { this._signature = signature; this._render(); }
   }
